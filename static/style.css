@@ -1,0 +1,109 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    background-color: #000000;
+    color: #ffffff;
+    font-family: 'Inter', sans-serif;
+    height: 100vh;
+}
+
+.layout {
+    display: grid;
+    grid-template-columns: 220px 1fr 300px;
+    height: 100vh;
+}
+
+.ticker-card {
+    background-color: #111111;
+    border: 1px solid #222222;
+    border-radius: 8px;
+    padding: 1.2rem 1.5rem;
+    margin-top: 0.5rem;
+}
+
+.ticker-card h5 {
+    color: #888888;
+    font-size: 0.85rem;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 0.3rem;
+}
+
+.ticker-card h3 {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #ffffff;
+    margin-bottom: 0.2rem;
+}
+
+.ticker-card p {
+    font-size: 0.95rem;
+    font-weight: 600;
+}
+
+.positive { color: #00ff88; }
+.negative { color: #ff4444; }
+
+.sidebar {
+    background-color: #0a0a0a;
+    border-right: 1px solid #222;
+    padding: 1.5rem 1rem;
+}
+
+.brand {
+    font-size: 1.3rem;
+    font-weight: 700;
+    letter-spacing: 1px;
+    color: #ffffff;
+}
+
+.main-content {
+    padding: 1.5rem;
+    overflow-y: auto;
+}
+
+.news-panel {
+    background-color: #0a0a0a;
+    border-left: 1px solid #222;
+    padding: 1.5rem 1rem;
+    overflow-y: auto;
+}
+
+.search-bar {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.search-bar input {
+    flex: 1;
+    background-color: #111;
+    border: 1px solid #333;
+    border-radius: 6px;
+    padding: 0.6rem 1rem;
+    color: #ffffff;
+    font-size: 0.95rem;
+    outline: none;
+}
+
+.search-bar input:focus {
+    border-color: #555;
+}
+
+.search-bar button {
+    background-color: #ffffff;
+    color: #000000;
+    border: none;
+    border-radius: 6px;
+    padding: 0.6rem 1.2rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.search-bar button:hover {
+    background-color: #dddddd;
+}

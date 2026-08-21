@@ -5,9 +5,9 @@ async function searchTicker() {
 
     let changeColor;
     if (data.change >= 0) {
-        changeColor = 'text-success';
+        changeColor = 'positive';
     } else {
-        changeColor = 'text-danger';
+        changeColor = 'negative';
     }
 
     let changeSign;

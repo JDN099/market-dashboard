@@ -3,27 +3,28 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Market Dashboard</title>
+    <title>MarketV</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="/static/style.css">
 </head>
-<body class="bg-dark text-light">
+<body>
 
-<nav class="navbar navbar-dark bg-black px-4">
-    <span class="navbar-brand fw-bold">Market Dashboard</span>
-</nav>
+<div class="layout">
+    <aside class="sidebar">
+        <h2 class="brand">MarketV</h2>
+    </aside>
 
-<div class="container mt-4">
-    <div class="row">
-        <div class="col-md-6">
-            <h5>Search Ticker</h5>
-            <div class="input-group mb-3">
-                <input type="text" class="form-control" id="ticker-input" placeholder="e.g. AAPL, NQ=F">
-                <button class="btn btn-success" onclick="searchTicker()">Search</button>
-            </div>
-            <div id="ticker-result"></div>
+    <main class="main-content">
+        <div class="search-bar">
+            <input type="text" id="ticker-input" placeholder="Search ticker e.g. AAPL, NQ=F">
+            <button onclick="searchTicker()">Search</button>
         </div>
-    </div>
+        <div id="ticker-result"></div>
+    </main>
+
+    <aside class="news-panel">
+        <h5>News Feed</h5>
+    </aside>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
