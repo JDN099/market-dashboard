@@ -107,3 +107,42 @@ body {
 .search-bar button:hover {
     background-color: #dddddd;
 }
+
+.search-wrapper {
+    position: relative;
+}
+
+#search-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background-color: #111;
+    border-radius: 6px;
+    z-index: 100;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+#search-dropdown:empty {
+    display: none;
+}
+
+.dropdown-item {
+    padding: 0.6rem 1rem;
+    cursor: pointer;
+    font-size: 0.9rem;
+    border-bottom: 1px solid #1a1a1a;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.dropdown-exchange {
+    color: #555;
+    font-size: 0.8rem;
+}
+
+.dropdown-item:hover {
+    background-color: #1a1a1a;
+}

@@ -1,6 +1,6 @@
 import os
 import psycopg2
-import yfinance as yf
+import requests
 from flask import Flask, render_template, jsonify, request
 from dotenv import load_dotenv
 
@@ -21,18 +21,38 @@ def get_db_connection():
 def index():
     return render_template('index.html')
 
+# Quote Routes
 @app.route('/quote')
 def quote():
     ticker = request.args.get('ticker', '').upper()
-    stock = yf.Ticker(ticker)
-    info = stock.info
+    api_key = os.getenv("TWELVEDATA_API_KEY")
+    response = requests.get(f'https://api.twelvedata.com/quote?symbol={ticker}&apikey={api_key}')
+    info = response.json()
     data = {
         'symbol': ticker,
-        'name': info.get('longName'),
-        'price': info.get('currentPrice') or info.get('regularMarketPrice'),
-        'change': info.get('regularMarketChangePercent'),
+        'name': info.get('name'),
+        'price': float(info.get('close', 0)),
+        'change': float(info.get('percent_change', 0)),
     }
     return jsonify(data)
+
+# Search Routes
+@app.route('/search')
+def search():
+    query = request.args.get('q', '').upper()
+    api_key = os.getenv("TWELVEDATA_API_KEY")
+    response = requests.get(f'https://api.twelvedata.com/symbol_search?symbol={query}&apikey={api_key}')
+    info = response.json()
+    data = info.get('data', [])
+    us_only = [r for r in data if r.get('country') == 'United States']
+    seen = set()
+    unique = []
+    for r in us_only:
+        if r['symbol'] not in seen:
+            seen.add(r['symbol'])
+            unique.append(r)
+    return jsonify(unique)
+
 
 # Watchlist Routes
 @app.route('/watchlist')

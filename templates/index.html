@@ -15,9 +15,12 @@
     </aside>
 
     <main class="main-content">
-        <div class="search-bar">
-            <input type="text" id="ticker-input" placeholder="Search ticker e.g. AAPL, NQ=F">
-            <button onclick="searchTicker()">Search</button>
+        <div class="search-wrapper">
+            <div class="search-bar">
+                <input type="text" id="ticker-input" placeholder="Search ticker e.g. AAPL, NQ=F">
+                <button onclick="searchTicker()">Search</button>
+            </div>
+            <div id="search-dropdown"></div>
         </div>
         <div id="ticker-result"></div>
     </main>

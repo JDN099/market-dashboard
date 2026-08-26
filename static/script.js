@@ -25,3 +25,47 @@ async function searchTicker() {
         </div>
     `;
 }
+
+function selectTicker(symbol) {
+    document.getElementById('ticker-input').value = symbol;
+    document.getElementById('search-dropdown').innerHTML = '';
+    searchTicker();
+}
+
+document.getElementById('ticker-input').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') {
+        document.getElementById('search-dropdown').innerHTML = '';
+        searchTicker();
+    }
+});
+
+document.getElementById('ticker-input').addEventListener('input', async function() {
+    const query = this.value.trim().toUpperCase();
+
+    if (query.length === 0) {
+        document.getElementById('search-dropdown').innerHTML = '';
+        return;
+    }
+
+    const response = await fetch(`/search?q=${query}`);
+    const results = await response.json();
+
+    if (document.getElementById('ticker-input').value.trim() === '') {
+        document.getElementById('search-dropdown').innerHTML = '';
+        return;
+    }
+
+    document.getElementById('search-dropdown').innerHTML = results.map(r => `
+        <div class="dropdown-item" onclick="selectTicker('${r.symbol}')">
+            <span>${r.symbol} - ${r.instrument_name}</span>
+            <span class="dropdown-exchange">${r.exchange}</span>
+        </div>
+    `).join('');
+});
+
+document.addEventListener('click', function(e) {
+    if (!document.getElementById('ticker-input').contains(e.target) &&
+        !document.getElementById('search-dropdown').contains(e.target)) {
+        document.getElementById('search-dropdown').innerHTML = '';
+    }
+});
