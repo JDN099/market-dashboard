@@ -34,6 +34,19 @@ def quote():
     }
     return jsonify(data)
 
+# Watchlist Routes
+@app.route('/watchlist')
+def watchlist():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT symbol FROM watchlist"
+    )
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return jsonify({'watchlist': [row[0] for row in rows]})
+
 @app.route('/watchlist/add', methods=['POST'])
 def add_to_watchlist():
     symbol = request.json.get('symbol')
@@ -41,7 +54,8 @@ def add_to_watchlist():
     cur = conn.cursor()
     cur.execute(
         "INSERT INTO watchlist (symbol) VALUES (%s)"
-    , (symbol,))
+    , (symbol,)
+    )
     conn.commit()
     cur.close()
     conn.close()
