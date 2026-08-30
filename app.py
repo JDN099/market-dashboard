@@ -30,7 +30,7 @@ def quote():
     info = response.json()
     data = {
         'symbol': ticker,
-        'name': info.get('name'),
+        'name': info.get('name', '').title(),
         'price': float(info.get('close', 0)),
         'change': float(info.get('percent_change', 0)),
     }

@@ -17,6 +17,7 @@ body {
     height: 100vh;
 }
 
+/* Ticker Card */
 .ticker-card {
     background-color: #111111;
     border: 1px solid #222222;
@@ -29,7 +30,6 @@ body {
     color: #888888;
     font-size: 0.85rem;
     letter-spacing: 1px;
-    text-transform: uppercase;
     margin-bottom: 0.3rem;
 }
 
@@ -43,6 +43,13 @@ body {
 .ticker-card p {
     font-size: 0.95rem;
     font-weight: 600;
+}
+
+.cards-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+    margin-top: 1rem;
 }
 
 .positive { color: #00ff88; }
@@ -73,6 +80,7 @@ body {
     overflow-y: auto;
 }
 
+/* Search Bar */
 .search-bar {
     display: flex;
     gap: 0.5rem;

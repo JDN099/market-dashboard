@@ -1,6 +1,5 @@
-async function searchTicker() {
-    const ticker = document.getElementById('ticker-input').value.toUpperCase();
-    const response = await fetch(`/quote?ticker=${ticker}`);
+async function loadCard(symbol) {
+    const response = await fetch(`/quote?ticker=${symbol}`);
     const data = await response.json();
 
     let changeColor;
@@ -17,13 +16,23 @@ async function searchTicker() {
         changeSign = '';
     }
 
-    document.getElementById('ticker-result').innerHTML = `
-        <div class="ticker-card">
-            <h5>${data.symbol} - ${data.name}</h5>
-            <h3>${data.price.toFixed(2)}</h3>
-            <p class="${changeColor}">${changeSign}${data.change.toFixed(2)}%</p>
-        </div>
+    const existingCard = document.getElementById(`card-${data.symbol}`);
+    if (existingCard) return;
+
+    const card = document.createElement('div');
+    card.className = 'ticker-card';
+    card.id = `card-${data.symbol}`;
+    card.innerHTML = `
+        <h5>${data.symbol} - ${data.name}</h5>
+        <h3>${data.price.toFixed(2)}</h3>
+        <p class="${changeColor}">${changeSign}${data.change.toFixed(2)}%</p>
     `;
+    document.getElementById('cards-grid').appendChild(card);
+}
+
+async function searchTicker() {
+    const ticker = document.getElementById('ticker-input').value.toUpperCase();
+    await loadCard(ticker);
 }
 
 function selectTicker(symbol) {
@@ -68,4 +77,13 @@ document.addEventListener('click', function(e) {
         !document.getElementById('search-dropdown').contains(e.target)) {
         document.getElementById('search-dropdown').innerHTML = '';
     }
+});
+
+async function loadDefaultCards() {
+    const defaults = ['SPY', 'QQQ', 'AAPL', 'MSFT', 'NVDA', 'TSLA'];
+    await Promise.all(defaults.map(symbol => loadCard(symbol)));
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadDefaultCards();
 });
