@@ -3,34 +3,88 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MarketV</title>
+    <title>{{ title }} | MarketV</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="/static/style.css">
 </head>
-<body>
-
-<div class="layout">
-    <aside class="sidebar">
-        <h2 class="brand">MarketV</h2>
-    </aside>
-
-    <main class="main-content">
-        <div class="search-wrapper">
-            <div class="search-bar">
-                <input type="text" id="ticker-input" placeholder="Search ticker e.g. AAPL, NQ=F">
-                <button onclick="searchTicker()">Search</button>
+<body data-page="{{ page }}">
+    <div class="layout">
+        <aside class="sidebar">
+            <div class="brand-wrap">
+                <div class="brand-mark">M</div>
+                <div class="brand">MarketV</div>
             </div>
-            <div id="search-dropdown"></div>
-        </div>
-        <div id="cards-grid" class="cards-grid"></div>
-    </main>
 
-    <aside class="news-panel">
-        <h5>News Feed</h5>
-    </aside>
-</div>
+            <nav class="side-nav">
+                <a class="nav-item {% if page == 'overview' %}active{% endif %}" href="/overview">Overview</a>
+                <a class="nav-item {% if page == 'markets' %}active{% endif %}" href="/markets">Markets</a>
+                <a class="nav-item {% if page == 'watchlist' %}active{% endif %}" href="/watchlist-page">Watchlist</a>
+                <a class="nav-item {% if page == 'economic-calendar' %}active{% endif %}" href="/economic-calendar">Economic Calendar</a>
+                <a class="nav-item {% if page == 'earnings' %}active{% endif %}" href="/earnings">Earnings</a>
+                <a class="nav-item {% if page == 'sentiment' %}active{% endif %}" href="/sentiment">Sentiment</a>
+            </nav>
+        </aside>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-<script src="/static/script.js"></script>
+        <main class="main-content">
+            <div class="toolbar-row">
+                <div class="page-header">
+                    <span class="page-kicker">Market dashboard</span>
+                    <h1>{{ title }}</h1>
+                </div>
+
+                <form id="watchlist-form" class="watchlist-form">
+                    <input type="text" id="watchlist-input" placeholder="Add symbol" maxlength="20">
+                    <button type="submit">Add</button>
+                </form>
+            </div>
+
+            <div class="search-wrapper">
+                <div class="search-bar">
+                    <input type="text" id="ticker-input" placeholder="Search ticker e.g. AAPL, NQ=F">
+                    <button onclick="searchTicker()">Search</button>
+                </div>
+                <div id="search-dropdown"></div>
+            </div>
+
+            <div class="watchlist-list" id="watchlist-list"></div>
+            <div id="cards-grid" class="cards-grid"></div>
+
+            <div class="market-flow">
+                <div class="market-flow-label">Market flow</div>
+                <div class="flow-items">
+                    <span class="flow-pill"><strong>SPX</strong> +0.41%</span>
+                    <span class="flow-pill"><strong>NDX</strong> +0.52%</span>
+                    <span class="flow-pill"><strong>R2K</strong> +0.18%</span>
+                    <span class="flow-pill"><strong>VIX</strong> -2.14%</span>
+                    <span class="flow-pill"><strong>10Y</strong> 4.18%</span>
+                </div>
+            </div>
+        </main>
+
+        <aside class="news-panel">
+            <div class="panel-header">
+                <h5>Market News</h5>
+                <span class="panel-chip">Live</span>
+            </div>
+
+            <div class="news-list">
+                <div class="news-item">
+                    <span class="news-tag">Macro</span>
+                    <p>U.S. equities open mixed as traders digest fresh inflation prints and Treasury volatility.</p>
+                </div>
+                <div class="news-item">
+                    <span class="news-tag">Tech</span>
+                    <p>Megacap momentum remains firm as semis lead the tape while broader breadth stays selective.</p>
+                </div>
+                <div class="news-item">
+                    <span class="news-tag">Energy</span>
+                    <p>Crude steadies after a choppy session as supply expectations and demand data balance out.</p>
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="/static/script.js"></script>
 </body>
 </html>

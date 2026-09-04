@@ -1,1 +1,4 @@
-flask
+﻿Flask
+python-dotenv
+psycopg2-binary
+yfinance
