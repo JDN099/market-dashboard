@@ -9,12 +9,20 @@ from flask import Flask, jsonify, render_template, request
 app = Flask(__name__)
 load_dotenv()
 
-POPULAR_SYMBOLS = [
+popular_symbols = [
     "AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA", "AMD", "INTC",
     "SPY", "QQQ", "IWM", "DIA", "V", "JPM", "XOM", "BRK-B", "NFLX",
     "NQ=F", "ES=F", "CL=F", "GC=F", "BTC-USD", "ETH-USD"
 ]
-VALID_SYMBOLS = set(symbol.upper() for symbol in POPULAR_SYMBOLS)
+VALID_SYMBOLS = set(symbol.upper() for symbol in popular_symbols)
+PAGE_TITLES = {
+    "overview": "Overview",
+    "markets": "Markets",
+    "watchlist": "Watchlist",
+    "economic-calendar": "Economic Calendar",
+    "earnings": "Earnings",
+    "sentiment": "Sentiment",
+}
 
 
 def get_db_connection():
@@ -48,11 +56,10 @@ def get_quote_for_symbol(symbol):
         hist = stock.history(period="5d", auto_adjust=False)
 
         name = info.get("shortName") or info.get("longName") or ticker
-
         is_futures = ticker.endswith("=F")
 
         price = safe_float(info.get("regularMarketPrice"))
-        settlement = safe_float(
+        previous_reference = safe_float(
             info.get("regularMarketPreviousClose") if is_futures else info.get("previousClose")
         )
 
@@ -61,32 +68,85 @@ def get_quote_for_symbol(symbol):
             previous = hist.iloc[-2] if len(hist) > 1 else latest
             price = safe_float(latest.get("Close"), price)
 
-            if not is_futures and settlement == 0.0:
-                settlement = safe_float(previous.get("Close"), settlement)
+            if not is_futures and previous_reference == 0.0:
+                previous_reference = safe_float(previous.get("Close"), previous_reference)
 
         if price == 0.0 and safe_float(info.get("regularMarketPrice")) != 0.0:
             price = safe_float(info.get("regularMarketPrice"))
-        if settlement == 0.0 and is_futures and safe_float(info.get("regularMarketPreviousClose")) != 0.0:
-            settlement = safe_float(info.get("regularMarketPreviousClose"))
-        if settlement == 0.0 and safe_float(info.get("previousClose")) != 0.0:
-            settlement = safe_float(info.get("previousClose"))
-        if settlement == 0.0:
-            settlement = price
+        if previous_reference == 0.0 and is_futures and safe_float(info.get("regularMarketPreviousClose")) != 0.0:
+            previous_reference = safe_float(info.get("regularMarketPreviousClose"))
+        if previous_reference == 0.0 and safe_float(info.get("previousClose")) != 0.0:
+            previous_reference = safe_float(info.get("previousClose"))
+        if previous_reference == 0.0:
+            previous_reference = price
 
-        change = 0.0 if settlement == 0 else ((price - settlement) / settlement) * 100
+        change = 0.0 if previous_reference == 0 else ((price - previous_reference) / previous_reference) * 100
+
+        market_cap = safe_float(info.get("marketCap"), 0.0)
+        volume = safe_float(info.get("regularMarketVolume"), 0.0)
+        day_high = safe_float(info.get("regularMarketDayHigh"), price)
+        day_low = safe_float(info.get("regularMarketDayLow"), price)
 
         return {
             "symbol": ticker,
             "name": name,
             "price": round(safe_float(price), 2),
             "change": round(safe_float(change), 2),
+            "market_cap": market_cap,
+            "volume": volume,
+            "day_high": day_high,
+            "day_low": day_low,
         }
     except Exception:
-        return {"symbol": ticker, "name": ticker, "price": 0.0, "change": 0.0}
+        return {
+            "symbol": ticker,
+            "name": ticker,
+            "price": 0.0,
+            "change": 0.0,
+            "market_cap": 0.0,
+            "volume": 0.0,
+            "day_high": 0.0,
+            "day_low": 0.0,
+        }
+
+
+def render_dashboard(page="overview"):
+    return render_template("index.html", page=page, title=PAGE_TITLES.get(page, "Overview"))
+
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    return render_dashboard("overview")
+
+
+@app.route("/overview")
+def overview():
+    return render_dashboard("overview")
+
+
+@app.route("/markets")
+def markets():
+    return render_dashboard("markets")
+
+
+@app.route("/watchlist-page")
+def watchlist_page():
+    return render_dashboard("watchlist")
+
+
+@app.route("/economic-calendar")
+def economic_calendar():
+    return render_dashboard("economic-calendar")
+
+
+@app.route("/earnings")
+def earnings():
+    return render_dashboard("earnings")
+
+
+@app.route("/sentiment")
+def sentiment():
+    return render_dashboard("sentiment")
 
 
 @app.route("/quote")
@@ -100,13 +160,12 @@ def quote():
 @app.route("/search")
 def search():
     query = request.args.get("q", "").strip().upper()
-
     if not query:
         return jsonify([])
 
     matches = []
     seen = set()
-    for symbol in POPULAR_SYMBOLS:
+    for symbol in popular_symbols:
         if query in symbol:
             label = symbol.replace("=F", " futures")
             if symbol not in seen:
@@ -116,7 +175,6 @@ def search():
                     "instrument_name": label,
                     "exchange": "Yahoo Finance"
                 })
-
     return jsonify(matches[:10])
 
 
@@ -153,12 +211,14 @@ def add_to_watchlist():
 
     if not symbol:
         return jsonify({"error": "Missing symbol"}), 400
+    if symbol not in VALID_SYMBOLS:
+        return jsonify({"error": "Unsupported symbol"}), 400
 
     conn = get_db_connection()
     try:
         with conn.cursor() as cur:
             cur.execute(
-                "INSERT INTO watchlist (symbol) VALUES (%s)",
+                "INSERT INTO watchlist (symbol) VALUES (%s) ON CONFLICT (symbol) DO NOTHING",
                 (symbol,),
             )
         conn.commit()

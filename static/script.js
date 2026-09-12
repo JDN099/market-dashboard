@@ -4,6 +4,37 @@ const VALID_SYMBOLS = [
     'NQ=F', 'ES=F', 'CL=F', 'GC=F', 'BTC-USD', 'ETH-USD'
 ];
 
+function formatMetric(value, formatter) {
+    const number = Number(value);
+    return Number.isFinite(number) && number > 0 ? formatter(number) : '—';
+}
+
+function formatCompactCurrency(value) {
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', notation: 'compact', maximumFractionDigits: 1 }).format(value);
+}
+
+function formatCompactNumber(value) {
+    return new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(value);
+}
+
+function showQuoteDetail(quote) {
+    const detail = document.getElementById('ticker-detail');
+    if (!detail) return;
+
+    const isPositive = Number(quote.change) >= 0;
+    const sign = isPositive ? '+' : '';
+    detail.innerHTML = `
+        <div class="detail-heading">
+            <div><span class="detail-eyebrow">Selected instrument</span><h2>${quote.symbol}</h2><p>${quote.name}</p></div>
+            <div class="detail-price"><strong>${Number(quote.price || 0).toFixed(2)}</strong><span class="${isPositive ? 'positive' : 'negative'}">${sign}${Number(quote.change || 0).toFixed(2)}% today</span></div>
+        </div>
+        <div class="detail-metrics">
+            <div><span>Day range</span><strong>${formatMetric(quote.day_low, value => value.toFixed(2))} – ${formatMetric(quote.day_high, value => value.toFixed(2))}</strong></div>
+            <div><span>Volume</span><strong>${formatMetric(quote.volume, formatCompactNumber)}</strong></div>
+            <div><span>Market cap</span><strong>${formatMetric(quote.market_cap, formatCompactCurrency)}</strong></div>
+        </div>`;
+}
+
 function buildCard(quote, selected = false) {
     const card = document.createElement('div');
     card.className = `ticker-card${selected ? ' selected' : ''}`;
@@ -16,7 +47,7 @@ function buildCard(quote, selected = false) {
     const removeButton = document.createElement('button');
     removeButton.type = 'button';
     removeButton.className = 'remove-card-btn';
-    removeButton.textContent = '?';
+    removeButton.textContent = '×';
     removeButton.addEventListener('click', async (event) => {
         event.stopPropagation();
         await removeFromWatchlist(quote.symbol);
@@ -27,6 +58,7 @@ function buildCard(quote, selected = false) {
     card.addEventListener('click', () => {
         document.querySelectorAll('.ticker-card').forEach((el) => el.classList.remove('selected'));
         card.classList.add('selected');
+        showQuoteDetail(quote);
     });
 
     card.innerHTML = `
@@ -52,29 +84,35 @@ async function loadCard(symbol) {
 async function searchTicker() {
     const ticker = document.getElementById('ticker-input').value.trim().toUpperCase();
 
-    if (!ticker || !VALID_SYMBOLS.includes(ticker)) {
+    if (!ticker) {
         document.getElementById('search-dropdown').innerHTML = '';
         return;
     }
 
-    await loadCard(ticker);
-}
+    if (VALID_SYMBOLS.includes(ticker)) {
+        await addToWatchlist(ticker);
+        document.getElementById('ticker-input').value = '';
+        document.getElementById('search-dropdown').innerHTML = '';
+        return;
+    }
 
-function selectTicker(symbol) {
-    document.getElementById('ticker-input').value = symbol;
     document.getElementById('search-dropdown').innerHTML = '';
-    searchTicker();
 }
 
-document.getElementById('ticker-input').addEventListener('keydown', function (e) {
+async function selectTicker(symbol) {
+    document.getElementById('ticker-input').value = '';
+    document.getElementById('search-dropdown').innerHTML = '';
+    await addToWatchlist(symbol);
+}
+
+document.getElementById('ticker-input').addEventListener('keydown', async function (e) {
     if (e.key === 'Enter') {
         const ticker = this.value.trim().toUpperCase();
-        const matches = VALID_SYMBOLS.includes(ticker);
-
         document.getElementById('search-dropdown').innerHTML = '';
 
-        if (matches) {
-            searchTicker();
+        if (VALID_SYMBOLS.includes(ticker)) {
+            await addToWatchlist(ticker);
+            this.value = '';
         }
     }
 });
@@ -123,7 +161,7 @@ async function refreshWatchlistList() {
         list.innerHTML = symbols.map((symbol) => `
             <span class="watchlist-pill">
                 ${symbol}
-                <button type="button" data-remove="${symbol}" aria-label="Remove ${symbol}">?</button>
+                <button type="button" data-remove="${symbol}" aria-label="Remove ${symbol}">×</button>
             </span>
         `).join('');
 
@@ -165,6 +203,7 @@ async function addToWatchlist(symbol) {
         if (!existing) {
             grid.appendChild(buildCard(q, true));
         }
+        showQuoteDetail(q);
     }
     await refreshWatchlistList();
 }
@@ -183,14 +222,6 @@ async function removeFromWatchlist(symbol) {
         alert(data.error || 'Unable to remove symbol');
     }
 }
-
-document.getElementById('watchlist-form').addEventListener('submit', async function (event) {
-    event.preventDefault();
-    const value = document.getElementById('watchlist-input').value.trim();
-    if (!value) return;
-    await addToWatchlist(value);
-    document.getElementById('watchlist-input').value = '';
-});
 
 async function renderWatchlistCards() {
     try {
@@ -241,6 +272,8 @@ async function loadDefaultCards() {
     for (const data of results) {
         grid.appendChild(buildCard(data));
     }
+
+    if (results[0]) showQuoteDetail(results[0]);
 }
 
 document.addEventListener('DOMContentLoaded', function () {

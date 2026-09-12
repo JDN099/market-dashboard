@@ -31,11 +31,6 @@
                     <span class="page-kicker">Market dashboard</span>
                     <h1>{{ title }}</h1>
                 </div>
-
-                <form id="watchlist-form" class="watchlist-form">
-                    <input type="text" id="watchlist-input" placeholder="Add symbol" maxlength="20">
-                    <button type="submit">Add</button>
-                </form>
             </div>
 
             <div class="search-wrapper">
@@ -48,6 +43,9 @@
 
             <div class="watchlist-list" id="watchlist-list"></div>
             <div id="cards-grid" class="cards-grid"></div>
+            <section id="ticker-detail" class="ticker-detail" aria-live="polite">
+                <div class="detail-empty">Select a quote card to view its market snapshot.</div>
+            </section>
 
             <div class="market-flow">
                 <div class="market-flow-label">Market flow</div>
