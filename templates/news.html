@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }} | MarketV</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body data-page="{{ page }}">
+    <div class="layout">
+        <aside class="sidebar">
+            <div class="brand-wrap">
+                <div class="brand">MarketV</div>
+            </div>
+            <nav class="side-nav">
+                <a class="nav-item" href="/markets">Markets</a>
+                <a class="nav-item" href="/watchlist-page">Watchlist</a>
+                <a class="nav-item" href="/economic-calendar">Economic Calendar</a>
+                <a class="nav-item" href="/earnings">Earnings</a>
+                <a class="nav-item" href="/sentiment">Sentiment</a>
+                <a class="nav-item active" href="/news-page">News</a>
+            </nav>
+        </aside>
+        <main class="main-content">
+            <div class="page-header">
+                <span class="page-kicker">U.S. market sources</span>
+                <h1>News</h1>
+            </div>
+            <section class="news-browser">
+                <div class="news-filters" aria-label="News time range">
+                    <button class="news-filter active" data-range="24h" type="button">Last 24 hours</button>
+                    <button class="news-filter" data-range="7d" type="button">Last 7 days</button>
+                </div>
+                <div class="news-browser-list" id="news-history-list" aria-live="polite">
+                    <p class="news-state">Loading news history…</p>
+                </div>
+                <button class="load-more-button" id="load-more-news" type="button">Load more</button>
+            </section>
+            <div class="market-flow">
+                <div class="market-flow-label">Market flow</div>
+                <div class="flow-items" id="news-flow-items">
+                    <span class="flow-pill"><strong>Market data</strong> Loading…</span>
+                </div>
+            </div>
+        </main>
+        <aside class="news-panel">
+            <div class="panel-header">
+                <h5>Latest</h5>
+                <span class="panel-chip" id="latest-news-status">Live</span>
+            </div>
+            <div class="news-list" id="latest-news-list" aria-live="polite">
+                <p class="news-state">Loading market news…</p>
+            </div>
+        </aside>
+    </div>
+    <script src="/static/news-history.js"></script>
+</body>
+</html>

@@ -112,7 +112,7 @@ body {
 }
 
 .main-content {
-    padding: 1.2rem 1.2rem 0.7rem;
+    padding: 1.2rem 1.2rem 0;
     overflow-y: auto;
     display: flex;
     flex-direction: column;
@@ -146,6 +146,13 @@ body {
     font-size: clamp(1.75rem, 2.6vw, 2.6rem);
     letter-spacing: -0.05em;
     line-height: 1;
+}
+
+.market-intro {
+    color: var(--text-muted);
+    font-size: 0.82rem;
+    line-height: 1.5;
+    margin: -0.35rem 0 0;
 }
 
 .watchlist-form {
@@ -279,6 +286,50 @@ body {
     flex-wrap: wrap;
     gap: 0.45rem;
     min-height: 24px;
+}
+
+.watchlist-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    color: var(--text-muted);
+    font-size: 0.68rem;
+}
+
+.watchlist-count {
+    color: var(--text-secondary);
+    margin-right: auto;
+}
+
+.watchlist-toolbar label {
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.watchlist-toolbar select {
+    background: var(--panel);
+    border: 1px solid var(--border-subtle);
+    border-radius: 7px;
+    color: var(--text-secondary);
+    font-size: 0.72rem;
+    padding: 0.35rem 0.45rem;
+}
+
+.watchlist-empty {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    background: var(--panel);
+    border: 1px dashed var(--border-subtle);
+    border-radius: 11px;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    padding: 1rem;
+}
+
+.watchlist-empty strong {
+    color: var(--text-secondary);
+    font-size: 0.86rem;
 }
 
 .watchlist-pill {
@@ -462,6 +513,8 @@ body {
 
 .market-flow {
     margin-top: auto;
+    margin-right: -1.2rem;
+    margin-left: -1.2rem;
     border-top: 1px solid var(--border-subtle);
     background: rgba(17, 17, 17, 0.6);
     border-radius: 12px 12px 0 0;
@@ -513,7 +566,7 @@ body {
 .panel-header {
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    align-items: baseline;
     margin-bottom: 0.9rem;
 }
 
@@ -533,6 +586,7 @@ body {
     font-size: 0.6rem;
     letter-spacing: 0.08em;
     text-transform: uppercase;
+    text-decoration: none;
 }
 
 .news-list {
@@ -546,6 +600,21 @@ body {
     border: 1px solid var(--border-subtle);
     border-radius: 10px;
     padding: 0.7rem 0.75rem;
+}
+
+.news-item--watch {
+    border-color: rgba(242, 165, 22, 0.35);
+}
+
+.news-item--critical {
+    background: rgba(191, 24, 24, 0.88);
+    border-color: rgba(255, 120, 120, 0.8);
+}
+
+.news-item--critical .news-meta,
+.news-item--critical p,
+.news-item--critical p a {
+    color: #ffffff;
 }
 
 .news-tag {
@@ -562,6 +631,127 @@ body {
 
 .news-item p {
     color: var(--text-secondary);
+    font-size: 0.8rem;
+    line-height: 1.5;
+}
+
+.news-item p a {
+    color: inherit;
+    text-decoration: none;
+}
+
+.news-item p a:hover {
+    color: var(--text);
+}
+
+.news-meta {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.5rem;
+    color: var(--text-muted);
+    font-size: 0.62rem;
+    margin-bottom: 0.55rem;
+}
+
+.news-time {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    white-space: nowrap;
+}
+
+.news-priority {
+    border-radius: 999px;
+    font-size: 0.55rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    padding: 0.16rem 0.34rem;
+    text-transform: uppercase;
+    text-decoration: none;
+}
+
+.panel-chip:hover {
+    color: var(--text);
+}
+
+.news-browser {
+    display: flex;
+    flex-direction: column;
+    gap: 0.8rem;
+}
+
+.news-filters {
+    display: flex;
+    gap: 0.45rem;
+}
+
+.news-filter,
+.load-more-button {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-subtle);
+    border-radius: 999px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 0.68rem;
+    letter-spacing: 0.06em;
+    padding: 0.42rem 0.7rem;
+    text-transform: uppercase;
+}
+
+.news-filter.active {
+    background: rgba(65, 132, 191, 0.15);
+    border-color: rgba(65, 132, 191, 0.45);
+    color: var(--text);
+}
+
+.news-browser-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+}
+
+.news-browser-list .news-item {
+    padding: 0.9rem;
+}
+
+.news-browser-list .news-item p {
+    font-size: 0.9rem;
+}
+
+.load-more-button {
+    align-self: center;
+    margin-top: 0.2rem;
+}
+
+.load-more-button:hover,
+.news-filter:hover {
+    border-color: rgba(255, 255, 255, 0.2);
+    color: var(--text);
+}
+
+.news-priority--critical {
+    background: rgba(255, 255, 255, 0.22);
+    color: #ffffff;
+}
+
+.news-priority--watch {
+    background: rgba(242, 165, 22, 0.14);
+    color: var(--warning);
+}
+
+.news-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    margin-top: 0.65rem;
+}
+
+.news-tags .news-tag {
+    margin-bottom: 0;
+}
+
+.news-state {
+    color: var(--text-muted);
     font-size: 0.8rem;
     line-height: 1.5;
 }

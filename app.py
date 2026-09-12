@@ -1,10 +1,15 @@
+import json
 import math
 import os
+import time
+from datetime import datetime, timedelta, timezone
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
 
 import psycopg2
 import yfinance as yf
 from dotenv import load_dotenv
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, redirect, render_template, request, url_for
 
 app = Flask(__name__)
 load_dotenv()
@@ -12,17 +17,44 @@ load_dotenv()
 popular_symbols = [
     "AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA", "AMD", "INTC",
     "SPY", "QQQ", "IWM", "DIA", "V", "JPM", "XOM", "BRK-B", "NFLX",
-    "NQ=F", "ES=F", "CL=F", "GC=F", "BTC-USD", "ETH-USD"
+    "NQ=F", "ES=F", "CL=F", "GC=F", "BTC-USD", "ETH-USD", "^VIX", "^TNX"
 ]
 VALID_SYMBOLS = set(symbol.upper() for symbol in popular_symbols)
 PAGE_TITLES = {
-    "overview": "Overview",
     "markets": "Markets",
     "watchlist": "Watchlist",
     "economic-calendar": "Economic Calendar",
     "earnings": "Earnings",
     "sentiment": "Sentiment",
 }
+NEWS_CACHE_TTL_SECONDS = 600
+news_cache = {}
+CRITICAL_NEWS_KEYWORDS = (
+    "attack",
+    "bankruptcy",
+    "emergency",
+    "halt",
+    "iran",
+    "sanctions",
+    "trump",
+    "war",
+)
+WATCH_NEWS_KEYWORDS = (
+    "acquisition",
+    "cpi",
+    "earnings",
+    "fed",
+    "jobs report",
+    "merger",
+    "tariff",
+)
+DEFAULT_NEWS_DOMAINS = (
+    "apnews.com",
+    "cnbc.com",
+    "finance.yahoo.com",
+    "marketwatch.com",
+    "reuters.com",
+)
 
 
 def get_db_connection():
@@ -43,6 +75,23 @@ def safe_float(value, default=0.0):
         return number
     except (TypeError, ValueError):
         return default
+
+
+def classify_news_importance(title):
+    headline = str(title or "").lower()
+    if any(keyword in headline for keyword in CRITICAL_NEWS_KEYWORDS):
+        return "critical"
+    if any(keyword in headline for keyword in WATCH_NEWS_KEYWORDS):
+        return "watch"
+    return "normal"
+
+
+def get_preferred_news_domains():
+    configured_domains = os.getenv("MARKETAUX_DOMAINS", "")
+    if configured_domains.strip():
+        return configured_domains
+
+    return ",".join(DEFAULT_NEWS_DOMAINS)
 
 
 def get_quote_for_symbol(symbol):
@@ -83,6 +132,11 @@ def get_quote_for_symbol(symbol):
         change = 0.0 if previous_reference == 0 else ((price - previous_reference) / previous_reference) * 100
 
         market_cap = safe_float(info.get("marketCap"), 0.0)
+        fund_assets = safe_float(info.get("totalAssets"), 0.0)
+        size_value = market_cap or fund_assets
+        size_label = "Market cap"
+        if not market_cap and fund_assets:
+            size_label = "Fund assets"
         volume = safe_float(info.get("regularMarketVolume"), 0.0)
         day_high = safe_float(info.get("regularMarketDayHigh"), price)
         day_low = safe_float(info.get("regularMarketDayLow"), price)
@@ -93,6 +147,8 @@ def get_quote_for_symbol(symbol):
             "price": round(safe_float(price), 2),
             "change": round(safe_float(change), 2),
             "market_cap": market_cap,
+            "size_value": size_value,
+            "size_label": size_label,
             "volume": volume,
             "day_high": day_high,
             "day_low": day_low,
@@ -104,10 +160,75 @@ def get_quote_for_symbol(symbol):
             "price": 0.0,
             "change": 0.0,
             "market_cap": 0.0,
+            "size_value": 0.0,
+            "size_label": "Market cap",
             "volume": 0.0,
             "day_high": 0.0,
             "day_low": 0.0,
         }
+
+
+def get_market_news(hours=None, page=1):
+    now = time.time()
+    cache_key = (hours, page)
+    cached_result = news_cache.get(cache_key)
+    if cached_result and now - cached_result["updated_at"] < NEWS_CACHE_TTL_SECONDS:
+        return cached_result["articles"]
+
+    api_key = os.getenv("MARKETAUX_API_KEY")
+    if not api_key:
+        raise RuntimeError("Marketaux API key is not configured")
+
+    query_params = {
+        "api_token": api_key,
+        "domains": get_preferred_news_domains(),
+        "language": "en",
+        "limit": 3,
+        "page": page,
+    }
+    if hours:
+        earliest_article = datetime.now(timezone.utc) - timedelta(hours=hours)
+        query_params["published_after"] = earliest_article.strftime("%Y-%m-%dT%H:%M:%S")
+
+    query = urlencode(query_params)
+    request = Request(
+        f"https://api.marketaux.com/v1/news/all?{query}",
+        headers={
+            "Accept": "application/json",
+            "User-Agent": "MarketV/1.0",
+        },
+    )
+
+    try:
+        with urlopen(request, timeout=10) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except Exception as exc:
+        raise RuntimeError("Unable to load market news") from exc
+
+    articles = []
+    for article in payload.get("data", []):
+        title = article.get("title") or "Untitled market update"
+        symbols = [
+            entity.get("symbol")
+            for entity in article.get("entities", [])
+            if entity.get("symbol")
+        ]
+        articles.append(
+            {
+                "title": title,
+                "url": article.get("url") or "",
+                "source": article.get("source") or "Market news",
+                "published_at": article.get("published_at") or "",
+                "symbols": symbols[:3],
+                "importance": classify_news_importance(title),
+            }
+        )
+
+    news_cache[cache_key] = {
+        "articles": articles,
+        "updated_at": now,
+    }
+    return articles
 
 
 def render_dashboard(page="overview"):
@@ -116,12 +237,12 @@ def render_dashboard(page="overview"):
 
 @app.route("/")
 def index():
-    return render_dashboard("overview")
+    return redirect(url_for("markets"))
 
 
 @app.route("/overview")
 def overview():
-    return render_dashboard("overview")
+    return redirect(url_for("markets"))
 
 
 @app.route("/markets")
@@ -147,6 +268,11 @@ def earnings():
 @app.route("/sentiment")
 def sentiment():
     return render_dashboard("sentiment")
+
+
+@app.route("/news-page")
+def news_page():
+    return render_template("news.html", page="news", title="News")
 
 
 @app.route("/quote")
@@ -176,6 +302,34 @@ def search():
                     "exchange": "Yahoo Finance"
                 })
     return jsonify(matches[:10])
+
+
+@app.route("/news")
+def news():
+    range_options = {
+        "24h": 24,
+        "7d": 24 * 7,
+    }
+    time_range = request.args.get("range", "")
+    hours = range_options.get(time_range)
+    try:
+        page = max(1, int(request.args.get("page", "1")))
+    except ValueError:
+        page = 1
+
+    try:
+        return jsonify(
+            {
+                "articles": get_market_news(hours=hours, page=page),
+                "page": page,
+            }
+        )
+    except RuntimeError as exc:
+        return jsonify(
+            {
+                "error": str(exc),
+            }
+        ), 503
 
 
 @app.route("/watchlist")

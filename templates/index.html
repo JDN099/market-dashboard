@@ -11,27 +11,30 @@
     <div class="layout">
         <aside class="sidebar">
             <div class="brand-wrap">
-                <div class="brand-mark">M</div>
                 <div class="brand">MarketV</div>
             </div>
 
             <nav class="side-nav">
-                <a class="nav-item {% if page == 'overview' %}active{% endif %}" href="/overview">Overview</a>
                 <a class="nav-item {% if page == 'markets' %}active{% endif %}" href="/markets">Markets</a>
                 <a class="nav-item {% if page == 'watchlist' %}active{% endif %}" href="/watchlist-page">Watchlist</a>
                 <a class="nav-item {% if page == 'economic-calendar' %}active{% endif %}" href="/economic-calendar">Economic Calendar</a>
                 <a class="nav-item {% if page == 'earnings' %}active{% endif %}" href="/earnings">Earnings</a>
                 <a class="nav-item {% if page == 'sentiment' %}active{% endif %}" href="/sentiment">Sentiment</a>
+                <a class="nav-item {% if page == 'news' %}active{% endif %}" href="/news-page">News</a>
             </nav>
         </aside>
 
         <main class="main-content">
             <div class="toolbar-row">
                 <div class="page-header">
-                    <span class="page-kicker">Market dashboard</span>
+                    <span class="page-kicker">{% if page == 'markets' %}U.S. market snapshot{% else %}Market dashboard{% endif %}</span>
                     <h1>{{ title }}</h1>
                 </div>
             </div>
+
+            {% if page == 'markets' %}
+            <p class="market-intro">Major U.S. indexes, index futures, and key commodities. Select any card for a detailed snapshot.</p>
+            {% endif %}
 
             <div class="search-wrapper">
                 <div class="search-bar">
@@ -41,20 +44,34 @@
                 <div id="search-dropdown"></div>
             </div>
 
-            <div class="watchlist-list" id="watchlist-list"></div>
-            <div id="cards-grid" class="cards-grid"></div>
             <section id="ticker-detail" class="ticker-detail" aria-live="polite">
                 <div class="detail-empty">Select a quote card to view its market snapshot.</div>
             </section>
 
+            {% if page == 'watchlist' %}
+            <div class="watchlist-toolbar">
+                <span class="watchlist-count" id="watchlist-count">Saved instruments</span>
+                <label for="watchlist-sort">Sort by</label>
+                <select id="watchlist-sort">
+                    <option value="symbol">Symbol</option>
+                    <option value="change">Daily change</option>
+                    <option value="market_cap">Market cap</option>
+                </select>
+            </div>
+            <div class="watchlist-empty" id="watchlist-empty" hidden>
+                <strong>Your watchlist is empty.</strong>
+                <span>Search for a supported ticker above to add your first instrument.</span>
+            </div>
+            {% endif %}
+            {% if page == 'watchlist' %}
+            <div class="watchlist-list" id="watchlist-list"></div>
+            {% endif %}
+            <div id="cards-grid" class="cards-grid"></div>
+
             <div class="market-flow">
                 <div class="market-flow-label">Market flow</div>
-                <div class="flow-items">
-                    <span class="flow-pill"><strong>SPX</strong> +0.41%</span>
-                    <span class="flow-pill"><strong>NDX</strong> +0.52%</span>
-                    <span class="flow-pill"><strong>R2K</strong> +0.18%</span>
-                    <span class="flow-pill"><strong>VIX</strong> -2.14%</span>
-                    <span class="flow-pill"><strong>10Y</strong> 4.18%</span>
+                <div class="flow-items" id="flow-items">
+                    <span class="flow-pill"><strong>Market data</strong> Loading…</span>
                 </div>
             </div>
         </main>
@@ -62,22 +79,11 @@
         <aside class="news-panel">
             <div class="panel-header">
                 <h5>Market News</h5>
-                <span class="panel-chip">Live</span>
+                <a class="panel-chip" href="/news-page">View all</a>
             </div>
 
-            <div class="news-list">
-                <div class="news-item">
-                    <span class="news-tag">Macro</span>
-                    <p>U.S. equities open mixed as traders digest fresh inflation prints and Treasury volatility.</p>
-                </div>
-                <div class="news-item">
-                    <span class="news-tag">Tech</span>
-                    <p>Megacap momentum remains firm as semis lead the tape while broader breadth stays selective.</p>
-                </div>
-                <div class="news-item">
-                    <span class="news-tag">Energy</span>
-                    <p>Crude steadies after a choppy session as supply expectations and demand data balance out.</p>
-                </div>
+            <div class="news-list" id="news-list" aria-live="polite">
+                <p class="news-state">Loading market news…</p>
             </div>
         </aside>
     </div>
