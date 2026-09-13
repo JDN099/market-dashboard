@@ -19,34 +19,6 @@ function relativeTime(timestamp) {
     return `${Math.floor(minutes / 60)}h ago`;
 }
 
-function articleMarkup(article) {
-    const importance = article.importance || 'normal';
-    const symbols = Array.isArray(article.symbols) ? article.symbols : [];
-    let importanceLabel = '';
-    if (importance === 'critical') {
-        importanceLabel = '<span class="news-priority news-priority--critical">Important</span>';
-    } else if (importance === 'watch') {
-        importanceLabel = '<span class="news-priority news-priority--watch">Watch</span>';
-    }
-
-    const tags = symbols.map((symbol) => {
-        return `<span class="news-tag">${symbol}</span>`;
-    }).join('');
-    const headline = article.url
-        ? `<a href="${article.url}" target="_blank" rel="noopener noreferrer">${article.title}</a>`
-        : article.title;
-
-    return `
-        <article class="news-item news-item--${importance}">
-            <div class="news-meta">
-                <span>${article.source}</span>
-                <div class="news-time">${importanceLabel}<time>${relativeTime(article.published_at)}</time></div>
-            </div>
-            <p>${headline}</p>
-            <div class="news-tags">${tags}</div>
-        </article>`;
-}
-
 function formatMarketSymbol(symbol) {
     const labels = {
         '^TNX': '10Y',
@@ -63,7 +35,7 @@ async function loadNewsHistory(append = false) {
     const list = document.getElementById('news-history-list');
     const loadMoreButton = document.getElementById('load-more-news');
     if (!append) {
-        list.innerHTML = '<p class="news-state">Loading news history…</p>';
+        MarketDom.renderNewsState(list, 'Loading news history…');
     }
 
     try {
@@ -74,17 +46,18 @@ async function loadNewsHistory(append = false) {
         }
 
         const articles = Array.isArray(data.articles) ? data.articles : [];
-        const markup = articles.map((article) => {
-            return articleMarkup(article);
-        }).join('');
-        if (append) {
-            list.insertAdjacentHTML('beforeend', markup);
-        } else {
-            list.innerHTML = markup || '<p class="news-state">No matching news is available.</p>';
+        if (!append) {
+            list.replaceChildren();
+        }
+        for (const article of articles) {
+            list.appendChild(MarketDom.createNewsArticle(article, relativeTime));
+        }
+        if (!append && articles.length === 0) {
+            MarketDom.renderNewsState(list, 'No matching news is available.');
         }
         loadMoreButton.hidden = articles.length < 3;
     } catch (error) {
-        list.innerHTML = `<p class="news-state">${error.message}</p>`;
+        MarketDom.renderNewsState(list, error.message);
         loadMoreButton.hidden = true;
     }
 }
@@ -100,12 +73,17 @@ async function loadLatestNews() {
             throw new Error(data.error || 'Unable to load market news');
         }
 
-        list.innerHTML = data.articles.map((article) => {
-            return articleMarkup(article);
-        }).join('');
+        const articles = Array.isArray(data.articles) ? data.articles : [];
+        list.replaceChildren();
+        for (const article of articles) {
+            list.appendChild(MarketDom.createNewsArticle(article, relativeTime));
+        }
+        if (articles.length === 0) {
+            MarketDom.renderNewsState(list, 'No market headlines are available right now.');
+        }
         status.textContent = 'Live';
     } catch (error) {
-        list.innerHTML = `<p class="news-state">${error.message}</p>`;
+        MarketDom.renderNewsState(list, error.message);
         status.textContent = 'Offline';
     }
 }

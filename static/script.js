@@ -39,36 +39,12 @@ function showQuoteDetail(quote) {
         return;
     }
 
-    const hasChange = Number.isFinite(quote.change);
-    const isPositive = hasChange && quote.change >= 0;
-    const sign = isPositive ? '+' : '';
-    const changeText = hasChange ? `${sign}${quote.change.toFixed(2)}% today` : 'Change unavailable';
-    detail.innerHTML = `
-        <div class="detail-heading">
-            <div>
-                <span class="detail-eyebrow">Selected instrument</span>
-                <h2>${quote.symbol}</h2>
-                <p>${quote.name}</p>
-            </div>
-            <div class="detail-price">
-                <strong>${Number(quote.price || 0).toFixed(2)}</strong>
-                <span class="${hasChange ? (isPositive ? 'positive' : 'negative') : ''}">${changeText}</span>
-            </div>
-        </div>
-        <div class="detail-metrics">
-            <div>
-                <span>Day range</span>
-                <strong>${formatMetric(quote.day_low, formatPrice)} – ${formatMetric(quote.day_high, formatPrice)}</strong>
-            </div>
-            <div>
-                <span>Volume</span>
-                <strong>${formatMetric(quote.volume, formatCompactNumber)}</strong>
-            </div>
-            <div>
-                <span>${quote.size_label || 'Market cap'}</span>
-                <strong>${formatMetric(quote.size_value || quote.market_cap, formatCompactCurrency)}</strong>
-            </div>
-        </div>`;
+    MarketDom.renderQuoteDetail(detail, quote, {
+        formatMetric,
+        formatPrice,
+        formatCompactNumber,
+        formatCompactCurrency
+    });
 }
 
 function formatMarketSymbol(symbol) {
@@ -135,36 +111,10 @@ function renderNews(articles) {
         return;
     }
 
-    newsList.innerHTML = articles.map((article) => {
-        const symbols = Array.isArray(article.symbols) ? article.symbols : [];
-        const importance = article.importance || 'normal';
-        let importanceLabel = '';
-        if (importance === 'critical') {
-            importanceLabel = '<span class="news-priority news-priority--critical">Important</span>';
-        } else if (importance === 'watch') {
-            importanceLabel = '<span class="news-priority news-priority--watch">Watch</span>';
-        }
-        const tags = symbols.map((symbol) => {
-            return `<span class="news-tag">${symbol}</span>`;
-        }).join('');
-        const headline = article.url
-            ? `<a href="${article.url}" target="_blank" rel="noopener noreferrer">${article.title}</a>`
-            : article.title;
-
-        return `
-            <article class="news-item news-item--${importance}">
-                <div class="news-meta">
-                    <span>${article.source}</span>
-                    <div class="news-time">
-                        ${importanceLabel}
-                        <time>${relativeTime(article.published_at)}</time>
-                    </div>
-                </div>
-                <p>${headline}</p>
-                <div class="news-tags">${tags}</div>
-            </article>
-        `;
-    }).join('');
+    newsList.replaceChildren();
+    for (const article of articles) {
+        newsList.appendChild(MarketDom.createNewsArticle(article, relativeTime));
+    }
 }
 
 async function loadNews() {
@@ -181,7 +131,7 @@ async function loadNews() {
             throw new Error(data.error || 'Unable to load market news');
         }
         if (!Array.isArray(data.articles) || data.articles.length === 0) {
-            newsList.innerHTML = '<p class="news-state">No market headlines are available right now.</p>';
+            MarketDom.renderNewsState(newsList, 'No market headlines are available right now.');
             return;
         }
 
@@ -190,7 +140,7 @@ async function loadNews() {
             status.textContent = 'Live';
         }
     } catch (error) {
-        newsList.innerHTML = `<p class="news-state">${error.message}</p>`;
+        MarketDom.renderNewsState(newsList, error.message);
         if (status) {
             status.textContent = 'Offline';
         }
@@ -293,7 +243,7 @@ function renderWatchlistCards() {
         return first.symbol.localeCompare(second.symbol);
     });
 
-    grid.innerHTML = '';
+    grid.replaceChildren();
     for (const quote of sortedQuotes) {
         grid.appendChild(buildCard(quote));
     }
@@ -311,24 +261,24 @@ async function searchTicker() {
     const ticker = document.getElementById('ticker-input').value.trim().toUpperCase();
 
     if (!ticker) {
-        document.getElementById('search-dropdown').innerHTML = '';
+        document.getElementById('search-dropdown').replaceChildren();
         return;
     }
 
     if (VALID_SYMBOLS.includes(ticker)) {
         await previewTicker(ticker);
         document.getElementById('ticker-input').value = '';
-        document.getElementById('search-dropdown').innerHTML = '';
+        document.getElementById('search-dropdown').replaceChildren();
         return;
     }
 
-    document.getElementById('search-dropdown').innerHTML = '';
+    document.getElementById('search-dropdown').replaceChildren();
 }
 
 async function selectTicker(symbol) {
     searchRequestId += 1;
     document.getElementById('ticker-input').value = '';
-    document.getElementById('search-dropdown').innerHTML = '';
+    document.getElementById('search-dropdown').replaceChildren();
     await previewTicker(symbol);
 }
 
@@ -589,7 +539,7 @@ document.getElementById('ticker-input').addEventListener('keydown', async functi
         clearTimeout(searchTimer);
         searchRequestId += 1;
         const ticker = this.value.trim().toUpperCase();
-        document.getElementById('search-dropdown').innerHTML = '';
+        document.getElementById('search-dropdown').replaceChildren();
 
         if (VALID_SYMBOLS.includes(ticker)) {
             await previewTicker(ticker);
@@ -614,7 +564,7 @@ document.addEventListener('click', function (event) {
     if (!input.contains(event.target) && !dropdown.contains(event.target)) {
         clearTimeout(searchTimer);
         searchRequestId += 1;
-        dropdown.innerHTML = '';
+        dropdown.replaceChildren();
     }
 });
 
@@ -629,18 +579,17 @@ async function refreshWatchlistList() {
         const data = await response.json();
         const symbols = Array.isArray(data.watchlist) ? data.watchlist : [];
 
-        list.innerHTML = symbols.map((symbol) => {
-            return `
-                <span class="watchlist-pill">
-                    ${symbol}
-                    <button type="button" data-remove="${symbol}" aria-label="Remove ${symbol}">×</button>
-                </span>
-            `;
-        }).join('');
-
-        list.querySelectorAll('button[data-remove]').forEach((button) => {
+        list.replaceChildren();
+        for (const symbol of symbols) {
+            const pill = document.createElement('span');
+            pill.className = 'watchlist-pill';
+            const label = document.createElement('span');
+            label.textContent = symbol;
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.setAttribute('aria-label', `Remove ${symbol}`);
+            button.textContent = '×';
             button.addEventListener('click', async () => {
-                const symbol = button.getAttribute('data-remove');
                 const removed = await removeFromWatchlist(symbol);
                 if (!removed) {
                     return;
@@ -658,7 +607,9 @@ async function refreshWatchlistList() {
                     }
                 }
             });
-        });
+            pill.append(label, button);
+            list.appendChild(pill);
+        }
     } catch (error) {
         console.error('Could not refresh watchlist:', error);
     }
