@@ -1,5 +1,4 @@
 import json
-import math
 import os
 import time
 from datetime import datetime, timedelta, timezone
@@ -7,19 +6,15 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 import psycopg2
-import yfinance as yf
 from dotenv import load_dotenv
 from flask import Flask, jsonify, redirect, render_template, request, url_for
+
+from services.market_data import MarketDataUnavailable, market_data
+from services.symbols import MARKET_CONFIG, POPULAR_SYMBOLS, VALID_SYMBOLS
 
 app = Flask(__name__)
 load_dotenv()
 
-popular_symbols = [
-    "AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA", "AMD", "INTC",
-    "SPY", "QQQ", "IWM", "DIA", "V", "JPM", "XOM", "BRK-B", "NFLX",
-    "NQ=F", "ES=F", "CL=F", "GC=F", "BTC-USD", "ETH-USD", "^VIX", "^TNX"
-]
-VALID_SYMBOLS = set(symbol.upper() for symbol in popular_symbols)
 PAGE_TITLES = {
     "markets": "Markets",
     "watchlist": "Watchlist",
@@ -67,16 +62,6 @@ def get_db_connection():
     )
 
 
-def safe_float(value, default=0.0):
-    try:
-        number = float(value)
-        if not math.isfinite(number):
-            return default
-        return number
-    except (TypeError, ValueError):
-        return default
-
-
 def classify_news_importance(title):
     headline = str(title or "").lower()
     if any(keyword in headline for keyword in CRITICAL_NEWS_KEYWORDS):
@@ -92,80 +77,6 @@ def get_preferred_news_domains():
         return configured_domains
 
     return ",".join(DEFAULT_NEWS_DOMAINS)
-
-
-def get_quote_for_symbol(symbol):
-    ticker = str(symbol or "").strip().upper()
-    if not ticker:
-        return {"symbol": "", "name": "", "price": 0.0, "change": 0.0}
-
-    try:
-        stock = yf.Ticker(ticker)
-        info = stock.info or {}
-        hist = stock.history(period="5d", auto_adjust=False)
-
-        name = info.get("shortName") or info.get("longName") or ticker
-        is_futures = ticker.endswith("=F")
-
-        price = safe_float(info.get("regularMarketPrice"))
-        previous_reference = safe_float(
-            info.get("regularMarketPreviousClose") if is_futures else info.get("previousClose")
-        )
-
-        if hist is not None and not hist.empty:
-            latest = hist.iloc[-1]
-            previous = hist.iloc[-2] if len(hist) > 1 else latest
-            price = safe_float(latest.get("Close"), price)
-
-            if not is_futures and previous_reference == 0.0:
-                previous_reference = safe_float(previous.get("Close"), previous_reference)
-
-        if price == 0.0 and safe_float(info.get("regularMarketPrice")) != 0.0:
-            price = safe_float(info.get("regularMarketPrice"))
-        if previous_reference == 0.0 and is_futures and safe_float(info.get("regularMarketPreviousClose")) != 0.0:
-            previous_reference = safe_float(info.get("regularMarketPreviousClose"))
-        if previous_reference == 0.0 and safe_float(info.get("previousClose")) != 0.0:
-            previous_reference = safe_float(info.get("previousClose"))
-        if previous_reference == 0.0:
-            previous_reference = price
-
-        change = 0.0 if previous_reference == 0 else ((price - previous_reference) / previous_reference) * 100
-
-        market_cap = safe_float(info.get("marketCap"), 0.0)
-        fund_assets = safe_float(info.get("totalAssets"), 0.0)
-        size_value = market_cap or fund_assets
-        size_label = "Market cap"
-        if not market_cap and fund_assets:
-            size_label = "Fund assets"
-        volume = safe_float(info.get("regularMarketVolume"), 0.0)
-        day_high = safe_float(info.get("regularMarketDayHigh"), price)
-        day_low = safe_float(info.get("regularMarketDayLow"), price)
-
-        return {
-            "symbol": ticker,
-            "name": name,
-            "price": round(safe_float(price), 2),
-            "change": round(safe_float(change), 2),
-            "market_cap": market_cap,
-            "size_value": size_value,
-            "size_label": size_label,
-            "volume": volume,
-            "day_high": day_high,
-            "day_low": day_low,
-        }
-    except Exception:
-        return {
-            "symbol": ticker,
-            "name": ticker,
-            "price": 0.0,
-            "change": 0.0,
-            "market_cap": 0.0,
-            "size_value": 0.0,
-            "size_label": "Market cap",
-            "volume": 0.0,
-            "day_high": 0.0,
-            "day_low": 0.0,
-        }
 
 
 def get_market_news(hours=None, page=1):
@@ -232,7 +143,12 @@ def get_market_news(hours=None, page=1):
 
 
 def render_dashboard(page="overview"):
-    return render_template("index.html", page=page, title=PAGE_TITLES.get(page, "Overview"))
+    return render_template(
+        "index.html",
+        page=page,
+        title=PAGE_TITLES.get(page, "Overview"),
+        market_config=MARKET_CONFIG,
+    )
 
 
 @app.route("/")
@@ -272,7 +188,12 @@ def sentiment():
 
 @app.route("/news-page")
 def news_page():
-    return render_template("news.html", page="news", title="News")
+    return render_template(
+        "news.html",
+        page="news",
+        title="News",
+        market_config=MARKET_CONFIG,
+    )
 
 
 @app.route("/quote")
@@ -280,7 +201,49 @@ def quote():
     ticker = request.args.get("ticker", "").strip().upper()
     if ticker not in VALID_SYMBOLS:
         return jsonify({"error": "Unsupported symbol"}), 400
-    return jsonify(get_quote_for_symbol(ticker))
+    try:
+        return jsonify(market_data.get_quote(ticker))
+    except MarketDataUnavailable as exc:
+        return jsonify({"error": str(exc)}), 503
+
+
+@app.route("/api/quotes")
+def batch_quotes():
+    raw_symbols = request.args.get("symbols", "")
+    symbols = list(dict.fromkeys(
+        symbol.strip().upper() for symbol in raw_symbols.split(",") if symbol.strip()
+    ))
+    if not symbols or len(symbols) > 30:
+        return jsonify({"error": "Provide 1 to 30 symbols"}), 400
+    if any(symbol not in VALID_SYMBOLS for symbol in symbols):
+        return jsonify({"error": "Unsupported symbol"}), 400
+
+    quotes, errors = market_data.get_quotes(symbols)
+    status = 200 if quotes else 503
+    return jsonify({"quotes": quotes, "errors": errors}), status
+
+
+@app.route("/api/history")
+def history():
+    ticker = request.args.get("symbol", "").strip().upper()
+    if ticker not in VALID_SYMBOLS:
+        return jsonify({"error": "Unsupported symbol"}), 400
+
+    period = request.args.get("period", "1mo")
+    interval = request.args.get("interval", "1d")
+    try:
+        points = market_data.get_history(ticker, period=period, interval=interval)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except MarketDataUnavailable as exc:
+        return jsonify({"error": str(exc)}), 503
+
+    return jsonify({
+        "symbol": ticker,
+        "period": period,
+        "interval": interval,
+        "points": points,
+    })
 
 
 @app.route("/search")
@@ -291,7 +254,7 @@ def search():
 
     matches = []
     seen = set()
-    for symbol in popular_symbols:
+    for symbol in POPULAR_SYMBOLS:
         if query in symbol:
             label = symbol.replace("=F", " futures")
             if symbol not in seen:
@@ -354,8 +317,8 @@ def watchlist_quotes():
     finally:
         conn.close()
 
-    quotes = [get_quote_for_symbol(symbol) for symbol in symbols]
-    return jsonify(quotes)
+    quotes, _errors = market_data.get_quotes(symbols)
+    return jsonify([quotes[symbol] for symbol in symbols if symbol in quotes])
 
 
 @app.route("/watchlist/add", methods=["POST"])

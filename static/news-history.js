@@ -1,5 +1,6 @@
 let selectedRange = '24h';
 let currentPage = 1;
+const MARKET_CONFIG = JSON.parse(document.getElementById('market-config').textContent);
 
 function relativeTime(timestamp) {
     const publishedAt = new Date(timestamp).getTime();
@@ -111,44 +112,36 @@ async function loadLatestNews() {
 
 async function loadMarketFlow() {
     const flowItems = document.getElementById('news-flow-items');
-    const symbols = [
-        'SPY',
-        'QQQ',
-        'IWM',
-        'DIA',
-        '^VIX',
-        '^TNX',
-        'CL=F',
-        'GC=F',
-        'BTC-USD'
-    ];
+    const symbols = MARKET_CONFIG.market_flow_symbols;
     if (!flowItems) {
         return;
     }
 
     try {
-        const quotes = await Promise.all(
-            symbols.map(async (symbol) => {
-                const response = await fetch(`/quote?ticker=${symbol}`);
-                return response.json();
-            })
-        );
-
-        flowItems.innerHTML = quotes.map((quote) => {
-            const change = Number(quote.change || 0);
-            const sign = change >= 0 ? '+' : '';
-            const changeClass = change >= 0 ? 'positive' : 'negative';
-            const displaySymbol = formatMarketSymbol(quote.symbol);
-
-            return `
-                <span class="flow-pill">
-                    <strong>${displaySymbol}</strong>
-                    <span class="${changeClass}">${sign}${change.toFixed(2)}%</span>
-                </span>
-            `;
-        }).join('');
+        const response = await fetch(`/api/quotes?symbols=${encodeURIComponent(symbols.join(','))}`);
+        if (!response.ok) {
+            throw new Error('Market data unavailable');
+        }
+        const data = await response.json();
+        flowItems.replaceChildren();
+        for (const symbol of symbols) {
+            const quote = data.quotes[symbol];
+            const pill = document.createElement('span');
+            pill.className = 'flow-pill';
+            const label = document.createElement('strong');
+            label.textContent = formatMarketSymbol(symbol);
+            const movement = document.createElement('span');
+            if (quote && Number.isFinite(quote.change)) {
+                movement.className = quote.change >= 0 ? 'positive' : 'negative';
+                movement.textContent = `${quote.change >= 0 ? '+' : ''}${quote.change.toFixed(2)}%`;
+            } else {
+                movement.textContent = 'Unavailable';
+            }
+            pill.append(label, movement);
+            flowItems.appendChild(pill);
+        }
     } catch (error) {
-        flowItems.innerHTML = '<span class="flow-pill"><strong>Market data</strong> Unavailable</span>';
+        flowItems.textContent = 'Market data unavailable';
     }
 }
 
