@@ -272,6 +272,22 @@ def history():
     })
 
 
+@app.route("/api/history/batch")
+def batch_intraday_history():
+    raw_symbols = request.args.get("symbols", "")
+    symbols = list(dict.fromkeys(
+        symbol.strip().upper() for symbol in raw_symbols.split(",") if symbol.strip()
+    ))
+    if not symbols or len(symbols) > 10:
+        return jsonify({"error": "Provide 1 to 10 symbols"}), 400
+    if any(symbol not in VALID_SYMBOLS for symbol in symbols):
+        return jsonify({"error": "Unsupported symbol"}), 400
+
+    histories, errors = market_data.get_intraday_histories(symbols)
+    status = 200 if histories else 503
+    return jsonify({"histories": histories, "errors": errors}), status
+
+
 @app.route("/search")
 def search():
     query = request.args.get("q", "").strip().upper()

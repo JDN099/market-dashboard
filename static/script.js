@@ -7,6 +7,16 @@ let savedSymbols = new Set();
 let savedSymbolsReady = Promise.resolve(false);
 let searchRequestId = 0;
 let searchTimer;
+let selectedHistoryRequestId = 0;
+let selectedHistoryPeriod = '1mo';
+let selectedQuoteSymbol = null;
+const HISTORY_PERIODS = [
+    { value: '1d', label: '1D', interval: '5m' },
+    { value: '5d', label: '5D', interval: '1h' },
+    { value: '1mo', label: '1M', interval: '1d' },
+    { value: '3mo', label: '3M', interval: '1d' },
+    { value: '1y', label: '1Y', interval: '1d' }
+];
 const searchQuotes = QuoteClient.create(async (symbols) => {
     const response = await fetch(`/api/quotes?symbols=${encodeURIComponent(symbols.join(','))}`);
     if (!response.ok) {
@@ -14,6 +24,24 @@ const searchQuotes = QuoteClient.create(async (symbols) => {
     }
     return response.json();
 });
+const historyClient = HistoryClient.create(
+    async (symbol, period, interval) => {
+        const response = await fetch(`/api/history?symbol=${encodeURIComponent(symbol)}&period=${period}&interval=${interval}`);
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data.error || 'Price history unavailable');
+        }
+        return data.points;
+    },
+    async (symbols) => {
+        const response = await fetch(`/api/history/batch?symbols=${encodeURIComponent(symbols.join(','))}`);
+        const data = await response.json();
+        if (!response.ok && !data.errors) {
+            throw new Error(data.error || 'Price history unavailable');
+        }
+        return data;
+    }
+);
 
 function formatMetric(value, formatter) {
     const number = Number(value);
@@ -51,6 +79,130 @@ function showQuoteDetail(quote) {
         formatPrice,
         formatCompactNumber,
         formatCompactCurrency
+    });
+    selectedQuoteSymbol = quote.symbol;
+    document.querySelectorAll('.ticker-card').forEach((card) => {
+        card.classList.toggle('selected', card.dataset.symbol === selectedQuoteSymbol);
+    });
+    renderSelectedHistory(detail, quote);
+}
+
+function requestHistory(symbol, period) {
+    const option = HISTORY_PERIODS.find((item) => item.value === period);
+    return historyClient.getOne(symbol, option.value, option.interval);
+}
+
+function loadIntradaySparkline(symbol, container, historyRequest, quoteRequest) {
+    container.title = `${symbol} 1D intraday prices; color follows daily percentage change`;
+    const changeRequest = quoteRequest.then((quote) => quote.change, () => null);
+    Promise.all([historyRequest, changeRequest]).then(([points, dailyChange]) => {
+        if (container.isConnected) {
+            const closes = points.map((point) => point.close);
+            const graphic = container.querySelector('.sparkline-graphic');
+            graphic.replaceChildren(MarketCharts.createSparkline(closes, { dailyChange }));
+        }
+    }).catch(() => {
+        if (container.isConnected) {
+            container.title = `${symbol} 1D trend unavailable`;
+            const graphic = container.querySelector('.sparkline-graphic');
+            graphic.replaceChildren(MarketCharts.createSparkline([]));
+        }
+    });
+}
+
+function loadCardSparklines(quotes) {
+    if (quotes.length === 0) {
+        return;
+    }
+    const symbols = quotes.map((quote) => quote.symbol);
+    const requests = historyClient.getIntradayMany(symbols);
+    for (const quote of quotes) {
+        const card = document.getElementById(`card-${quote.symbol}`);
+        const container = card && card.querySelector('.card-sparkline');
+        if (container) {
+            loadIntradaySparkline(quote.symbol, container, requests.get(quote.symbol), Promise.resolve(quote));
+        }
+    }
+}
+
+function renderSelectedHistory(detail, quote) {
+    const requestId = ++selectedHistoryRequestId;
+    const section = document.createElement('section');
+    section.className = 'detail-history';
+    const header = document.createElement('div');
+    header.className = 'history-heading';
+    const title = document.createElement('h3');
+    title.textContent = 'Price history';
+    const summary = document.createElement('div');
+    summary.className = 'history-summary';
+    summary.appendChild(title);
+    const controls = document.createElement('div');
+    controls.className = 'history-periods';
+    controls.setAttribute('role', 'group');
+    controls.setAttribute('aria-label', 'Chart time range');
+
+    for (const option of HISTORY_PERIODS) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = option.label;
+        button.className = option.value === selectedHistoryPeriod ? 'active' : '';
+        button.setAttribute('aria-pressed', String(option.value === selectedHistoryPeriod));
+        button.addEventListener('click', () => {
+            if (selectedHistoryPeriod === option.value) {
+                return;
+            }
+            selectedHistoryPeriod = option.value;
+            renderSelectedHistory(detail, quote);
+        });
+        controls.appendChild(button);
+    }
+
+    header.append(summary, controls);
+    const content = document.createElement('div');
+    content.className = 'history-content';
+    content.textContent = 'Loading price history…';
+    section.append(header, content);
+    const previous = detail.querySelector('.detail-history');
+    if (previous) {
+        previous.replaceWith(section);
+    } else {
+        detail.appendChild(section);
+    }
+
+    const period = selectedHistoryPeriod;
+    requestHistory(quote.symbol, period).then((points) => {
+        if (requestId !== selectedHistoryRequestId || !section.isConnected) {
+            return;
+        }
+        const label = HISTORY_PERIODS.find((item) => item.value === period).label;
+        const periodChange = MarketCharts.calculatePeriodChange(points);
+        const chart = MarketCharts.createHistoryChart(points, quote.symbol, label);
+        if (periodChange === null || !chart) {
+            content.textContent = 'Price history unavailable for this range.';
+            return;
+        }
+        const change = document.createElement('span');
+        change.className = 'history-change';
+        if (periodChange > 0) {
+            change.classList.add('positive');
+        } else if (periodChange < 0) {
+            change.classList.add('negative');
+        }
+        change.textContent = `${label} ${MarketCharts.formatPeriodChange(periodChange)}`;
+        change.title = 'Change from first to last plotted price';
+        summary.appendChild(change);
+        const dates = document.createElement('div');
+        dates.className = 'history-dates';
+        const start = document.createElement('span');
+        start.textContent = MarketCharts.formatHistoryDate(points[0].time, period);
+        const end = document.createElement('span');
+        end.textContent = MarketCharts.formatHistoryDate(points[points.length - 1].time, period);
+        dates.append(start, end);
+        content.replaceChildren(chart, dates);
+    }).catch(() => {
+        if (requestId === selectedHistoryRequestId && section.isConnected) {
+            content.textContent = 'Price history unavailable right now.';
+        }
     });
 }
 
@@ -165,10 +317,6 @@ function buildCard(quote, selected = false) {
     const changeSign = hasChange && quote.change >= 0 ? '+' : '';
 
     card.addEventListener('click', () => {
-        document.querySelectorAll('.ticker-card').forEach((element) => {
-            element.classList.remove('selected');
-        });
-        card.classList.add('selected');
         showQuoteDetail(quote);
     });
 
@@ -181,7 +329,19 @@ function buildCard(quote, selected = false) {
     movement.textContent = hasChange
         ? `${changeSign}${quote.change.toFixed(2)}%`
         : 'Change unavailable';
-    card.append(heading, price, movement);
+    const sparkline = document.createElement('div');
+    sparkline.className = 'card-sparkline';
+    const sparklineLabel = document.createElement('span');
+    sparklineLabel.className = 'sparkline-label';
+    sparklineLabel.textContent = '1D';
+    const sparklineGraphic = document.createElement('span');
+    sparklineGraphic.className = 'sparkline-graphic';
+    sparklineGraphic.appendChild(MarketCharts.createSparkline([]));
+    sparkline.append(sparklineLabel, sparklineGraphic);
+    const footer = document.createElement('div');
+    footer.className = 'card-footer';
+    footer.append(movement, sparkline);
+    card.append(heading, price, footer);
 
     if (document.body.dataset.page === 'watchlist') {
         const removeButton = document.createElement('button');
@@ -252,7 +412,7 @@ function renderWatchlistCards() {
 
     grid.replaceChildren();
     for (const quote of sortedQuotes) {
-        grid.appendChild(buildCard(quote));
+        grid.appendChild(buildCard(quote, quote.symbol === selectedQuoteSymbol));
     }
     for (const symbol of savedSymbols) {
         if (!watchlistQuotes.some((quote) => quote.symbol === symbol)) {
@@ -260,6 +420,7 @@ function renderWatchlistCards() {
         }
     }
     updateWatchlistEmptyState();
+    loadCardSparklines(sortedQuotes);
 }
 
 async function searchTicker() {
@@ -299,38 +460,6 @@ async function previewTicker(symbol) {
         const detail = document.getElementById('ticker-detail');
         detail.textContent = `Quote unavailable for ${symbol}. Please try again later.`;
     }
-}
-
-function createSparkline(values) {
-    if (!Array.isArray(values) || values.length < 2) {
-        const empty = document.createElement('span');
-        empty.className = 'dropdown-chart-empty';
-        empty.textContent = '—';
-        return empty;
-    }
-
-    const width = 86;
-    const height = 30;
-    const minimum = Math.min(...values);
-    const maximum = Math.max(...values);
-    const spread = maximum - minimum || 1;
-    const isRising = values[values.length - 1] >= values[0];
-    const points = values.map((value, index) => {
-        const x = 2 + (index / (values.length - 1)) * (width - 4);
-        const y = height - 3 - ((value - minimum) / spread) * (height - 6);
-        return `${x.toFixed(1)},${y.toFixed(1)}`;
-    });
-
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('class', `dropdown-chart ${isRising ? 'positive' : 'negative'}`);
-    svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
-    svg.setAttribute('aria-label', 'Five-day price trend');
-    svg.setAttribute('role', 'img');
-
-    const line = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
-    line.setAttribute('points', points.join(' '));
-    svg.appendChild(line);
-    return svg;
 }
 
 function updateSearchStars() {
@@ -424,6 +553,9 @@ function renderSearchResults(results, requestId) {
     const quotePromises = searchQuotes.getMany(visibleResults.map((result) => {
         return result.symbol;
     }));
+    const intradayPromises = historyClient.getIntradayMany(visibleResults.map((result) => {
+        return result.symbol;
+    }));
 
     for (const result of visibleResults) {
         const row = document.createElement('div');
@@ -458,11 +590,23 @@ function renderSearchResults(results, requestId) {
 
         const chart = document.createElement('span');
         chart.className = 'dropdown-chart-wrap';
-        chart.appendChild(createSparkline([]));
+        const chartLabel = document.createElement('span');
+        chartLabel.className = 'sparkline-label';
+        chartLabel.textContent = '1D';
+        const chartGraphic = document.createElement('span');
+        chartGraphic.className = 'sparkline-graphic';
+        chartGraphic.appendChild(MarketCharts.createSparkline([]));
+        chart.append(chartLabel, chartGraphic);
 
         select.append(identity, quoteLabel, chart);
         row.append(star, select);
         dropdown.appendChild(row);
+        loadIntradaySparkline(
+            result.symbol,
+            chart,
+            intradayPromises.get(result.symbol),
+            quotePromises.get(result.symbol)
+        );
 
         quotePromises.get(result.symbol).then((quote) => {
             if (requestId !== searchRequestId || !row.isConnected) {
@@ -482,7 +626,6 @@ function renderSearchResults(results, requestId) {
                     movement.textContent = 'Change unavailable';
                 }
                 quoteLabel.append(price, movement);
-                chart.replaceChildren(createSparkline(quote.sparkline));
             } else {
                 quoteLabel.textContent = 'Data unavailable';
             }
@@ -680,9 +823,10 @@ async function loadDashboardQuotes(savedSymbolsPromise) {
     grid.replaceChildren();
     for (const symbol of cardSymbols) {
         grid.appendChild(quotes[symbol]
-            ? buildCard(quotes[symbol])
+            ? buildCard(quotes[symbol], symbol === selectedQuoteSymbol)
             : buildUnavailableCard(symbol, errors[symbol]));
     }
+    loadCardSparklines(cardSymbols.filter((symbol) => Boolean(quotes[symbol])).map((symbol) => quotes[symbol]));
 
     const firstAvailable = cardSymbols.find((symbol) => {
         return Boolean(quotes[symbol]);

@@ -12,6 +12,7 @@ QUOTE_TTL_SECONDS = 60
 HISTORY_TTL_SECONDS = 300
 ERROR_TTL_SECONDS = 10
 HISTORY_OPTIONS = {
+    "1d": {"5m"},
     "5d": {"1d", "1h"},
     "1mo": {"1d", "1h"},
     "3mo": {"1d"},
@@ -139,6 +140,29 @@ class MarketDataService:
             with self._lock:
                 self._history[key] = (self.clock(), points)
             return points
+
+    def get_intraday_histories(self, symbols):
+        histories = {}
+        errors = {}
+        if not symbols:
+            return histories, errors
+
+        def fetch_one(symbol):
+            try:
+                return symbol, self.get_history(symbol, period="1d", interval="5m"), None
+            except MarketDataUnavailable as exc:
+                return symbol, None, str(exc)
+            except Exception:
+                return symbol, None, f"History unavailable for {symbol}"
+
+        with ThreadPoolExecutor(max_workers=min(4, len(symbols))) as executor:
+            for symbol, points, error in executor.map(fetch_one, symbols):
+                if error:
+                    errors[symbol] = error
+                else:
+                    histories[symbol] = points
+
+        return histories, errors
 
     def _fetch_history(self, symbol, period, interval):
         try:

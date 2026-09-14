@@ -55,6 +55,35 @@ class MarketRoutesTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json["points"], points)
 
+    def test_history_route_accepts_intraday_range(self):
+        points = [{"time": "2026-09-11T09:30:00-04:00", "close": 100}]
+        with patch.object(app.market_data, "get_history", return_value=points) as get_history:
+            response = self.client.get("/api/history?symbol=SPY&period=1d&interval=5m")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json["points"], points)
+        get_history.assert_called_once_with("SPY", period="1d", interval="5m")
+
+    def test_intraday_batch_deduplicates_and_returns_partial_errors(self):
+        points = [{"time": "2026-09-11T09:30:00-04:00", "close": 100}]
+        with patch.object(app.market_data, "get_intraday_histories", return_value=(
+            {"SPY": points},
+            {"QQQ": "History unavailable for QQQ"},
+        )) as fetch:
+            response = self.client.get("/api/history/batch?symbols=SPY,QQQ,SPY")
+
+        self.assertEqual(response.status_code, 200)
+        fetch.assert_called_once_with(["SPY", "QQQ"])
+        self.assertEqual(response.json["histories"]["SPY"], points)
+        self.assertIn("QQQ", response.json["errors"])
+
+    def test_intraday_batch_limits_symbols(self):
+        response = self.client.get("/api/history/batch?symbols=")
+        self.assertEqual(response.status_code, 400)
+
+        response = self.client.get("/api/history/batch?symbols=UNKNOWN")
+        self.assertEqual(response.status_code, 400)
+
     def test_history_rejects_invalid_symbol(self):
         response = self.client.get("/api/history?symbol=UNKNOWN")
         self.assertEqual(response.status_code, 400)

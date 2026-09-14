@@ -100,8 +100,14 @@ class MarketDataServiceTests(unittest.TestCase):
         self.assertEqual([point["close"] for point in points], [100, 101])
         self.assertIn("2026-01-01", points[0]["time"])
 
+        intraday_points = service.get_history("SPY", period="1d", interval="5m")
+        self.assertEqual([point["close"] for point in intraday_points], [100, 101])
+
         with self.assertRaises(ValueError):
             service.get_history("SPY", period="5y", interval="1m")
+
+        with self.assertRaises(ValueError):
+            service.get_history("SPY", period="1d", interval="1d")
 
     def test_history_is_cached_by_symbol_and_range_until_ttl_expires(self):
         ticker = FakeTicker(closes=[100, 101])
@@ -124,6 +130,21 @@ class MarketDataServiceTests(unittest.TestCase):
         current_time[0] = 300
         service.get_history("SPY", period="1mo", interval="1d")
         self.assertEqual(ticker.calls, 3)
+
+    def test_intraday_batch_reuses_history_cache_and_reports_partial_errors(self):
+        tickers = {
+            "SPY": FakeTicker(closes=[100, 101]),
+            "QQQ": FakeTicker(),
+        }
+        service = MarketDataService(ticker_factory=lambda symbol: tickers[symbol])
+
+        histories, errors = service.get_intraday_histories(["SPY", "QQQ"])
+        again = service.get_history("SPY", period="1d", interval="5m")
+
+        self.assertEqual([point["close"] for point in histories["SPY"]], [100, 101])
+        self.assertEqual(histories["SPY"], again)
+        self.assertEqual(tickers["SPY"].calls, 1)
+        self.assertIn("QQQ", errors)
 
     def test_simultaneous_history_requests_share_one_provider_fetch(self):
         ticker = FakeTicker(closes=[100, 101], delay=0.03)
