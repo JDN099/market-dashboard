@@ -1,16 +1,18 @@
 import json
 import os
+import re
+import secrets
 import time
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
-import psycopg2
 from dotenv import load_dotenv
-from flask import Flask, jsonify, redirect, render_template, request, url_for
+from flask import Flask, g, jsonify, redirect, render_template, request, url_for
 
 from services.market_data import MarketDataUnavailable, market_data
 from services.symbols import MARKET_CONFIG, POPULAR_SYMBOLS, VALID_SYMBOLS
+from services.watchlist import WatchlistStore
 
 app = Flask(__name__)
 load_dotenv()
@@ -24,6 +26,10 @@ PAGE_TITLES = {
 }
 NEWS_CACHE_TTL_SECONDS = 600
 news_cache = {}
+watchlist_store = WatchlistStore()
+VISITOR_COOKIE_NAME = "marketv_visitor"
+VISITOR_COOKIE_MAX_AGE = 365 * 24 * 60 * 60
+VISITOR_ID_PATTERN = re.compile(r"[A-Za-z0-9_-]{43}\Z")
 CRITICAL_NEWS_KEYWORDS = (
     "attack",
     "bankruptcy",
@@ -52,14 +58,34 @@ DEFAULT_NEWS_DOMAINS = (
 )
 
 
-def get_db_connection():
-    return psycopg2.connect(
-        dbname=os.getenv("DB_NAME"),
-        user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASSWORD"),
-        host=os.getenv("DB_HOST"),
-        port=os.getenv("DB_PORT")
-    )
+def current_visitor_id():
+    if hasattr(g, "visitor_id"):
+        return g.visitor_id
+
+    cookie_value = request.cookies.get(VISITOR_COOKIE_NAME, "")
+    if VISITOR_ID_PATTERN.fullmatch(cookie_value):
+        g.visitor_id = cookie_value
+    else:
+        g.visitor_id = secrets.token_urlsafe(32)
+        g.new_visitor_id = True
+    return g.visitor_id
+
+
+@app.after_request
+def attach_visitor_cookie(response):
+    if getattr(g, "new_visitor_id", False):
+        secure = request.is_secure or os.getenv("VISITOR_COOKIE_SECURE", "").lower() in (
+            "1", "true", "yes"
+        )
+        response.set_cookie(
+            VISITOR_COOKIE_NAME,
+            g.visitor_id,
+            max_age=VISITOR_COOKIE_MAX_AGE,
+            httponly=True,
+            secure=secure,
+            samesite="Lax",
+        )
+    return response
 
 
 def classify_news_importance(title):
@@ -297,25 +323,19 @@ def news():
 
 @app.route("/watchlist")
 def watchlist():
-    conn = get_db_connection()
     try:
-        with conn.cursor() as cur:
-            cur.execute("SELECT symbol FROM watchlist ORDER BY added_at DESC, id DESC")
-            rows = cur.fetchall()
-        return jsonify({"watchlist": [row[0] for row in rows]})
-    finally:
-        conn.close()
+        symbols = watchlist_store.get_symbols(current_visitor_id())
+        return jsonify({"watchlist": symbols})
+    except Exception:
+        return jsonify({"error": "Watchlist unavailable"}), 503
 
 
 @app.route("/watchlist/quotes")
 def watchlist_quotes():
-    conn = get_db_connection()
     try:
-        with conn.cursor() as cur:
-            cur.execute("SELECT symbol FROM watchlist ORDER BY added_at DESC, id DESC")
-            symbols = [row[0] for row in cur.fetchall()]
-    finally:
-        conn.close()
+        symbols = watchlist_store.get_symbols(current_visitor_id())
+    except Exception:
+        return jsonify({"error": "Watchlist unavailable"}), 503
 
     quotes, _errors = market_data.get_quotes(symbols)
     return jsonify([quotes[symbol] for symbol in symbols if symbol in quotes])
@@ -331,20 +351,11 @@ def add_to_watchlist():
     if symbol not in VALID_SYMBOLS:
         return jsonify({"error": "Unsupported symbol"}), 400
 
-    conn = get_db_connection()
     try:
-        with conn.cursor() as cur:
-            cur.execute(
-                "INSERT INTO watchlist (symbol) VALUES (%s) ON CONFLICT (symbol) DO NOTHING",
-                (symbol,),
-            )
-        conn.commit()
+        watchlist_store.add_symbol(current_visitor_id(), symbol)
         return jsonify({"status": "added", "symbol": symbol})
-    except Exception as exc:
-        conn.rollback()
-        return jsonify({"error": str(exc)}), 500
-    finally:
-        conn.close()
+    except Exception:
+        return jsonify({"error": "Watchlist unavailable"}), 503
 
 
 @app.route("/watchlist/remove", methods=["DELETE"])
@@ -355,17 +366,11 @@ def remove_from_watchlist():
     if not symbol:
         return jsonify({"error": "Missing symbol"}), 400
 
-    conn = get_db_connection()
     try:
-        with conn.cursor() as cur:
-            cur.execute("DELETE FROM watchlist WHERE symbol = %s", (symbol,))
-        conn.commit()
+        watchlist_store.remove_symbol(current_visitor_id(), symbol)
         return jsonify({"status": "removed", "symbol": symbol})
-    except Exception as exc:
-        conn.rollback()
-        return jsonify({"error": str(exc)}), 500
-    finally:
-        conn.close()
+    except Exception:
+        return jsonify({"error": "Watchlist unavailable"}), 503
 
 
 if __name__ == "__main__":

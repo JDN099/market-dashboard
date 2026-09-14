@@ -4,6 +4,7 @@ const MARKET_SYMBOLS = MARKET_CONFIG.market_symbols;
 const MARKET_FLOW_SYMBOLS = MARKET_CONFIG.market_flow_symbols;
 let watchlistQuotes = [];
 let savedSymbols = new Set();
+let savedSymbolsReady = Promise.resolve(false);
 let searchRequestId = 0;
 let searchTimer;
 const searchQuoteCache = new Map();
@@ -371,6 +372,7 @@ async function loadSavedSymbols() {
         const data = await response.json();
         savedSymbols = new Set(Array.isArray(data.watchlist) ? data.watchlist : []);
         updateSearchStars();
+        renderWatchlistPills([...savedSymbols]);
         return true;
     } catch (error) {
         console.error('Could not load saved symbols:', error);
@@ -380,6 +382,7 @@ async function loadSavedSymbols() {
 
 async function toggleSearchStar(symbol, button) {
     button.disabled = true;
+    await savedSymbolsReady;
     const isSaved = savedSymbols.has(symbol);
     const endpoint = isSaved ? '/watchlist/remove' : '/watchlist/add';
     const method = isSaved ? 'DELETE' : 'POST';
@@ -568,50 +571,48 @@ document.addEventListener('click', function (event) {
     }
 });
 
-async function refreshWatchlistList() {
+function renderWatchlistPills(symbols) {
     const list = document.getElementById('watchlist-list');
     if (!list) {
         return;
     }
 
-    try {
-        const response = await fetch('/watchlist');
-        const data = await response.json();
-        const symbols = Array.isArray(data.watchlist) ? data.watchlist : [];
+    list.replaceChildren();
+    for (const symbol of symbols) {
+        const pill = document.createElement('span');
+        pill.className = 'watchlist-pill';
+        const label = document.createElement('span');
+        label.textContent = symbol;
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.setAttribute('aria-label', `Remove ${symbol}`);
+        button.textContent = '×';
+        button.addEventListener('click', async () => {
+            const removed = await removeFromWatchlist(symbol);
+            if (!removed) {
+                return;
+            }
+            await refreshWatchlistList();
+            if (document.body.dataset.page === 'watchlist') {
+                watchlistQuotes = watchlistQuotes.filter((item) => {
+                    return item.symbol !== symbol;
+                });
+                renderWatchlistCards();
+            } else {
+                const card = document.getElementById(`card-${symbol}`);
+                if (card) {
+                    card.remove();
+                }
+            }
+        });
+        pill.append(label, button);
+        list.appendChild(pill);
+    }
+}
 
-        list.replaceChildren();
-        for (const symbol of symbols) {
-            const pill = document.createElement('span');
-            pill.className = 'watchlist-pill';
-            const label = document.createElement('span');
-            label.textContent = symbol;
-            const button = document.createElement('button');
-            button.type = 'button';
-            button.setAttribute('aria-label', `Remove ${symbol}`);
-            button.textContent = '×';
-            button.addEventListener('click', async () => {
-                const removed = await removeFromWatchlist(symbol);
-                if (!removed) {
-                    return;
-                }
-                await refreshWatchlistList();
-                if (document.body.dataset.page === 'watchlist') {
-                    watchlistQuotes = watchlistQuotes.filter((item) => {
-                        return item.symbol !== symbol;
-                    });
-                    renderWatchlistCards();
-                } else {
-                    const card = document.getElementById(`card-${symbol}`);
-                    if (card) {
-                        card.remove();
-                    }
-                }
-            });
-            pill.append(label, button);
-            list.appendChild(pill);
-        }
-    } catch (error) {
-        console.error('Could not refresh watchlist:', error);
+async function refreshWatchlistList() {
+    if (document.getElementById('watchlist-list')) {
+        await loadSavedSymbols();
     }
 }
 
@@ -711,15 +712,14 @@ async function loadDashboardQuotes(savedSymbolsPromise) {
 }
 
 document.addEventListener('DOMContentLoaded', function () {
-    const savedSymbolsPromise = loadSavedSymbols();
+    savedSymbolsReady = loadSavedSymbols();
     const watchlistSort = document.getElementById('watchlist-sort');
     if (watchlistSort) {
         watchlistSort.addEventListener('change', () => {
             renderWatchlistCards();
         });
     }
-    refreshWatchlistList();
-    loadDashboardQuotes(savedSymbolsPromise);
+    loadDashboardQuotes(savedSymbolsReady);
     loadNews();
     window.setInterval(loadNews, 60000);
 });
