@@ -330,17 +330,6 @@ def watchlist():
         return jsonify({"error": "Watchlist unavailable"}), 503
 
 
-@app.route("/watchlist/quotes")
-def watchlist_quotes():
-    try:
-        symbols = watchlist_store.get_symbols(current_visitor_id())
-    except Exception:
-        return jsonify({"error": "Watchlist unavailable"}), 503
-
-    quotes, _errors = market_data.get_quotes(symbols)
-    return jsonify([quotes[symbol] for symbol in symbols if symbol in quotes])
-
-
 @app.route("/watchlist/add", methods=["POST"])
 def add_to_watchlist():
     data = request.get_json(silent=True) or {}

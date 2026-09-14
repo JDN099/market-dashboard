@@ -7,7 +7,13 @@ let savedSymbols = new Set();
 let savedSymbolsReady = Promise.resolve(false);
 let searchRequestId = 0;
 let searchTimer;
-const searchQuoteCache = new Map();
+const searchQuotes = QuoteClient.create(async (symbols) => {
+    const response = await fetch(`/api/quotes?symbols=${encodeURIComponent(symbols.join(','))}`);
+    if (!response.ok) {
+        throw new Error('Quote unavailable');
+    }
+    return response.json();
+});
 
 function formatMetric(value, formatter) {
     const number = Number(value);
@@ -285,7 +291,7 @@ async function selectTicker(symbol) {
 
 async function previewTicker(symbol) {
     try {
-        const quote = await getSearchQuote(symbol);
+        const quote = await searchQuotes.getOne(symbol);
         if (quote.symbol) {
             showQuoteDetail(quote);
         }
@@ -293,31 +299,6 @@ async function previewTicker(symbol) {
         const detail = document.getElementById('ticker-detail');
         detail.textContent = `Quote unavailable for ${symbol}. Please try again later.`;
     }
-}
-
-async function getSearchQuote(symbol) {
-    const cached = searchQuoteCache.get(symbol);
-    if (cached && Date.now() - cached.createdAt < 60000) {
-        return cached.promise;
-    }
-
-    const promise = fetch(`/quote?ticker=${encodeURIComponent(symbol)}`).then(async (response) => {
-        if (!response.ok) {
-            throw new Error('Quote unavailable');
-        }
-        return response.json();
-    });
-
-    searchQuoteCache.set(symbol, {
-        createdAt: Date.now(),
-        promise
-    });
-
-    promise.catch(() => {
-        searchQuoteCache.delete(symbol);
-    });
-
-    return promise;
 }
 
 function createSparkline(values) {
@@ -407,7 +388,7 @@ async function toggleSearchStar(symbol, button) {
             savedSymbols.add(symbol);
             if (document.body.dataset.page === 'watchlist') {
                 try {
-                    const quote = await getSearchQuote(symbol);
+                    const quote = await searchQuotes.getOne(symbol);
                     if (!watchlistQuotes.some((item) => item.symbol === symbol)) {
                         watchlistQuotes.push(quote);
                     }
@@ -439,7 +420,12 @@ function renderSearchResults(results, requestId) {
         return;
     }
 
-    for (const result of results.slice(0, 5)) {
+    const visibleResults = results.slice(0, 5);
+    const quotePromises = searchQuotes.getMany(visibleResults.map((result) => {
+        return result.symbol;
+    }));
+
+    for (const result of visibleResults) {
         const row = document.createElement('div');
         row.className = 'dropdown-item';
 
@@ -478,7 +464,7 @@ function renderSearchResults(results, requestId) {
         row.append(star, select);
         dropdown.appendChild(row);
 
-        getSearchQuote(result.symbol).then((quote) => {
+        quotePromises.get(result.symbol).then((quote) => {
             if (requestId !== searchRequestId || !row.isConnected) {
                 return;
             }
@@ -671,10 +657,7 @@ async function loadDashboardQuotes(savedSymbolsPromise) {
 
     renderMarketFlow(quotes, errors);
     for (const [symbol, quote] of Object.entries(quotes)) {
-        searchQuoteCache.set(symbol, {
-            createdAt: Date.now(),
-            promise: Promise.resolve(quote)
-        });
+        searchQuotes.seed(symbol, quote);
     }
 
     if (page === 'watchlist') {

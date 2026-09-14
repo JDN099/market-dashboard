@@ -59,6 +59,10 @@ class MarketRoutesTests(unittest.TestCase):
         response = self.client.get("/api/history?symbol=UNKNOWN")
         self.assertEqual(response.status_code, 400)
 
+    def test_legacy_watchlist_quotes_route_is_removed(self):
+        response = self.client.get("/watchlist/quotes")
+        self.assertEqual(response.status_code, 404)
+
 
 if __name__ == "__main__":
     unittest.main()

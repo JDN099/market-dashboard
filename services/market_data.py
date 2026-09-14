@@ -9,6 +9,7 @@ import yfinance as yf
 
 
 QUOTE_TTL_SECONDS = 60
+HISTORY_TTL_SECONDS = 300
 ERROR_TTL_SECONDS = 10
 HISTORY_OPTIONS = {
     "5d": {"1d", "1h"},
@@ -45,13 +46,22 @@ def nonnegative_number(value):
 
 
 class MarketDataService:
-    def __init__(self, quote_ttl=QUOTE_TTL_SECONDS, ticker_factory=None, clock=None):
+    def __init__(
+        self,
+        quote_ttl=QUOTE_TTL_SECONDS,
+        history_ttl=HISTORY_TTL_SECONDS,
+        ticker_factory=None,
+        clock=None,
+    ):
         self.quote_ttl = quote_ttl
+        self.history_ttl = history_ttl
         self.ticker_factory = ticker_factory or yf.Ticker
         self.clock = clock or time.monotonic
         self._quotes = {}
         self._errors = {}
         self._quote_locks = {}
+        self._history = {}
+        self._history_locks = {}
         self._lock = threading.Lock()
 
     def get_quote(self, symbol):
@@ -112,6 +122,25 @@ class MarketDataService:
         if interval not in HISTORY_OPTIONS.get(period, set()):
             raise ValueError("Unsupported history period or interval")
 
+        key = (symbol, period, interval)
+        with self._lock:
+            cached = self._history.get(key)
+            if cached and self.clock() - cached[0] < self.history_ttl:
+                return cached[1]
+            history_lock = self._history_locks.setdefault(key, threading.Lock())
+
+        with history_lock:
+            with self._lock:
+                cached = self._history.get(key)
+                if cached and self.clock() - cached[0] < self.history_ttl:
+                    return cached[1]
+
+            points = self._fetch_history(symbol, period, interval)
+            with self._lock:
+                self._history[key] = (self.clock(), points)
+            return points
+
+    def _fetch_history(self, symbol, period, interval):
         try:
             history = self.ticker_factory(symbol).history(
                 period=period,

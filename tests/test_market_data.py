@@ -103,6 +103,41 @@ class MarketDataServiceTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             service.get_history("SPY", period="5y", interval="1m")
 
+    def test_history_is_cached_by_symbol_and_range_until_ttl_expires(self):
+        ticker = FakeTicker(closes=[100, 101])
+        current_time = [0]
+        service = MarketDataService(
+            history_ttl=300,
+            ticker_factory=lambda _symbol: ticker,
+            clock=lambda: current_time[0],
+        )
+
+        first = service.get_history("SPY", period="1mo", interval="1d")
+        current_time[0] = 299
+        second = service.get_history("SPY", period="1mo", interval="1d")
+        self.assertEqual(first, second)
+        self.assertEqual(ticker.calls, 1)
+
+        service.get_history("SPY", period="1mo", interval="1h")
+        self.assertEqual(ticker.calls, 2)
+
+        current_time[0] = 300
+        service.get_history("SPY", period="1mo", interval="1d")
+        self.assertEqual(ticker.calls, 3)
+
+    def test_simultaneous_history_requests_share_one_provider_fetch(self):
+        ticker = FakeTicker(closes=[100, 101], delay=0.03)
+        service = MarketDataService(ticker_factory=lambda _symbol: ticker)
+
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            histories = list(executor.map(
+                lambda _index: service.get_history("SPY"),
+                range(8),
+            ))
+
+        self.assertEqual(ticker.calls, 1)
+        self.assertTrue(all(history == histories[0] for history in histories))
+
 
 if __name__ == "__main__":
     unittest.main()
