@@ -73,13 +73,29 @@ const MarketCharts = (() => {
 
         const line = domDocument.createElementNS('http://www.w3.org/2000/svg', 'polyline');
         line.setAttribute('points', coordinates.join(' '));
+        const [lastX, lastY] = coordinates[coordinates.length - 1].split(',');
+        const endpoint = domDocument.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        endpoint.setAttribute('class', 'sparkline-endpoint');
+        endpoint.setAttribute('cx', lastX);
+        endpoint.setAttribute('cy', lastY);
+        endpoint.setAttribute('r', '2.6');
+        const endpointTitle = domDocument.createElementNS('http://www.w3.org/2000/svg', 'title');
+        endpointTitle.textContent = 'Latest available price';
+        endpoint.appendChild(endpointTitle);
         svg.appendChild(line);
+        svg.appendChild(endpoint);
         return svg;
     }
 
-    function createHistoryChart(points, symbol, periodLabel, { domDocument = document } = {}) {
+    function createHistoryChart(points, symbol, periodLabel, {
+        changeOverride = null,
+        domDocument = document
+    } = {}) {
         const prices = Array.isArray(points) ? points.map((point) => Number(point.close)) : [];
-        const periodChange = calculatePeriodChange(points);
+        const calculatedChange = calculatePeriodChange(points);
+        const periodChange = Number.isFinite(changeOverride)
+            ? changeOverride
+            : calculatedChange;
         if (periodChange === null) {
             return null;
         }

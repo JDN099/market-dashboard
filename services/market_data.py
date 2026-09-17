@@ -213,17 +213,27 @@ class MarketDataService:
                 if close is not None:
                     closes.append(close)
 
-        price = closes[-1] if closes else positive_number(info.get("regularMarketPrice"))
+        is_futures = symbol.endswith("=F")
+        live_price = positive_number(info.get("regularMarketPrice"))
+        if is_futures:
+            price = live_price
+        else:
+            price = live_price
+            if price is None and closes:
+                price = closes[-1]
         if price is None:
             raise MarketDataUnavailable(f"Quote unavailable for {symbol}")
 
-        is_futures = symbol.endswith("=F")
-        reference_key = "regularMarketPreviousClose" if is_futures else "previousClose"
-        previous_close = positive_number(info.get(reference_key))
-        if previous_close is None:
-            previous_close = positive_number(info.get("previousClose"))
-        if previous_close is None and len(closes) > 1:
-            previous_close = closes[-2]
+        if is_futures:
+            previous_close = positive_number(info.get("regularMarketPreviousClose"))
+            change_basis = "Prior settlement"
+        else:
+            previous_close = positive_number(info.get("regularMarketPreviousClose"))
+            if previous_close is None and len(closes) > 1:
+                previous_close = closes[-2]
+            if previous_close is None:
+                previous_close = positive_number(info.get("previousClose"))
+            change_basis = "Previous close"
         change = None
         if previous_close is not None:
             change = round((price - previous_close) / previous_close * 100, 2)
@@ -238,6 +248,7 @@ class MarketDataService:
             "name": info.get("shortName") or info.get("longName") or symbol,
             "price": round(price, 2),
             "change": change,
+            "change_basis": change_basis,
             "market_cap": market_cap,
             "size_value": size_value,
             "size_label": size_label,

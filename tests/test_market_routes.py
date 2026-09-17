@@ -92,6 +92,37 @@ class MarketRoutesTests(unittest.TestCase):
         response = self.client.get("/watchlist/quotes")
         self.assertEqual(response.status_code, 404)
 
+    def test_dashboard_displays_delay_and_educational_notices(self):
+        response = self.client.get("/markets")
+        page = response.get_data(as_text=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Delayed data", page)
+        self.assertIn("For educational purposes only. Not financial advice.", page)
+        self.assertNotIn("only — not financial advice", page)
+        self.assertIn('id="news-status">Delayed', page)
+
+    def test_dashboard_loads_split_ui_scripts_without_inline_search_handler(self):
+        response = self.client.get("/markets")
+        page = response.get_data(as_text=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('/static/market-ui.js', page)
+        self.assertIn('/static/watchlist-ui.js', page)
+        self.assertIn('/static/search.js', page)
+        self.assertIn('id="ticker-search-button"', page)
+        self.assertNotIn('onclick="searchTicker()', page)
+
+    def test_news_page_displays_delay_and_educational_notices(self):
+        response = self.client.get("/news-page")
+        page = response.get_data(as_text=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Delayed news", page)
+        self.assertIn("For educational purposes only. Not financial advice.", page)
+        self.assertNotIn("only — not financial advice", page)
+        self.assertIn('id="latest-news-status">Delayed', page)
+
 
 if __name__ == "__main__":
     unittest.main()

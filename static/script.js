@@ -5,8 +5,6 @@ const MARKET_FLOW_SYMBOLS = MARKET_CONFIG.market_flow_symbols;
 let watchlistQuotes = [];
 let savedSymbols = new Set();
 let savedSymbolsReady = Promise.resolve(false);
-let searchRequestId = 0;
-let searchTimer;
 let selectedHistoryRequestId = 0;
 let selectedHistoryPeriod = '1mo';
 let selectedQuoteSymbol = null;
@@ -42,6 +40,15 @@ const historyClient = HistoryClient.create(
         return data;
     }
 );
+const searchController = SearchController.create({
+    validSymbols: VALID_SYMBOLS,
+    quoteClient: searchQuotes,
+    historyClient,
+    loadIntradaySparkline,
+    onPreview: previewTicker,
+    onToggleStar: toggleSearchStar,
+    onResultsRendered: updateSearchStars
+});
 
 function formatMetric(value, formatter) {
     const number = Number(value);
@@ -175,8 +182,15 @@ function renderSelectedHistory(detail, quote) {
             return;
         }
         const label = HISTORY_PERIODS.find((item) => item.value === period).label;
-        const periodChange = MarketCharts.calculatePeriodChange(points);
-        const chart = MarketCharts.createHistoryChart(points, quote.symbol, label);
+        const usesSettlement = period === '1d'
+            && quote.change_basis === 'Prior settlement'
+            && Number.isFinite(quote.change);
+        const periodChange = usesSettlement
+            ? quote.change
+            : MarketCharts.calculatePeriodChange(points);
+        const chart = MarketCharts.createHistoryChart(points, quote.symbol, label, {
+            changeOverride: usesSettlement ? quote.change : null
+        });
         if (periodChange === null || !chart) {
             content.textContent = 'Price history unavailable for this range.';
             return;
@@ -189,7 +203,9 @@ function renderSelectedHistory(detail, quote) {
             change.classList.add('negative');
         }
         change.textContent = `${label} ${MarketCharts.formatPeriodChange(periodChange)}`;
-        change.title = 'Change from first to last plotted price';
+        change.title = usesSettlement
+            ? 'Change from prior settlement to current price'
+            : 'Change from first to last plotted price';
         summary.appendChild(change);
         const dates = document.createElement('div');
         dates.className = 'history-dates';
@@ -233,10 +249,11 @@ function renderMarketFlow(quotes, errors = {}) {
         label.textContent = formatMarketSymbol(symbol);
         const movement = document.createElement('span');
 
-        if (quote && Number.isFinite(quote.change)) {
-            const sign = quote.change >= 0 ? '+' : '';
-            movement.className = quote.change >= 0 ? 'positive' : 'negative';
-            movement.textContent = `${sign}${quote.change.toFixed(2)}%`;
+        if (quote) {
+            const display = MarketUi.describeChange(quote.change, 'Unavailable');
+            movement.className = display.className;
+            movement.textContent = display.text;
+            movement.title = quote.change_basis || 'Daily change';
         } else {
             movement.textContent = 'Unavailable';
             movement.title = errors[symbol] || 'Change unavailable';
@@ -296,7 +313,7 @@ async function loadNews() {
 
         renderNews(data.articles);
         if (status) {
-            status.textContent = 'Live';
+            status.textContent = 'Delayed';
         }
     } catch (error) {
         MarketDom.renderNewsState(newsList, error.message);
@@ -312,9 +329,7 @@ function buildCard(quote, selected = false) {
     card.id = `card-${quote.symbol}`;
     card.dataset.symbol = quote.symbol;
 
-    const hasChange = Number.isFinite(quote.change);
-    const changeColor = hasChange ? (quote.change >= 0 ? 'positive' : 'negative') : '';
-    const changeSign = hasChange && quote.change >= 0 ? '+' : '';
+    const changeDisplay = MarketUi.describeChange(quote.change);
 
     card.addEventListener('click', () => {
         showQuoteDetail(quote);
@@ -325,19 +340,10 @@ function buildCard(quote, selected = false) {
     const price = document.createElement('h3');
     price.textContent = Number(quote.price).toFixed(2);
     const movement = document.createElement('p');
-    movement.className = changeColor;
-    movement.textContent = hasChange
-        ? `${changeSign}${quote.change.toFixed(2)}%`
-        : 'Change unavailable';
-    const sparkline = document.createElement('div');
-    sparkline.className = 'card-sparkline';
-    const sparklineLabel = document.createElement('span');
-    sparklineLabel.className = 'sparkline-label';
-    sparklineLabel.textContent = '1D';
-    const sparklineGraphic = document.createElement('span');
-    sparklineGraphic.className = 'sparkline-graphic';
-    sparklineGraphic.appendChild(MarketCharts.createSparkline([]));
-    sparkline.append(sparklineLabel, sparklineGraphic);
+    movement.className = changeDisplay.className;
+    movement.title = quote.change_basis || 'Daily change';
+    movement.textContent = changeDisplay.text;
+    const sparkline = MarketUi.createSparklineShell('card-sparkline');
     const footer = document.createElement('div');
     footer.className = 'card-footer';
     footer.append(movement, sparkline);
@@ -350,15 +356,7 @@ function buildCard(quote, selected = false) {
         removeButton.textContent = '×';
         removeButton.addEventListener('click', async (event) => {
             event.stopPropagation();
-            const removed = await removeFromWatchlist(quote.symbol);
-            if (!removed) {
-                return;
-            }
-            await refreshWatchlistList();
-            watchlistQuotes = watchlistQuotes.filter((item) => {
-                return item.symbol !== quote.symbol;
-            });
-            renderWatchlistCards();
+            await removeSavedSymbol(quote.symbol);
         });
         card.appendChild(removeButton);
     }
@@ -380,13 +378,7 @@ function buildUnavailableCard(symbol, message = 'Market data unavailable') {
 function updateWatchlistEmptyState() {
     const emptyState = document.getElementById('watchlist-empty');
     const count = document.getElementById('watchlist-count');
-    if (emptyState) {
-        emptyState.hidden = savedSymbols.size > 0;
-    }
-    if (count) {
-        const suffix = savedSymbols.size === 1 ? '' : 's';
-        count.textContent = `${savedSymbols.size} saved instrument${suffix}`;
-    }
+    WatchlistUi.renderSummary(emptyState, count, savedSymbols.size);
 }
 
 function renderWatchlistCards() {
@@ -423,33 +415,6 @@ function renderWatchlistCards() {
     loadCardSparklines(sortedQuotes);
 }
 
-async function searchTicker() {
-    clearTimeout(searchTimer);
-    searchRequestId += 1;
-    const ticker = document.getElementById('ticker-input').value.trim().toUpperCase();
-
-    if (!ticker) {
-        document.getElementById('search-dropdown').replaceChildren();
-        return;
-    }
-
-    if (VALID_SYMBOLS.includes(ticker)) {
-        await previewTicker(ticker);
-        document.getElementById('ticker-input').value = '';
-        document.getElementById('search-dropdown').replaceChildren();
-        return;
-    }
-
-    document.getElementById('search-dropdown').replaceChildren();
-}
-
-async function selectTicker(symbol) {
-    searchRequestId += 1;
-    document.getElementById('ticker-input').value = '';
-    document.getElementById('search-dropdown').replaceChildren();
-    await previewTicker(symbol);
-}
-
 async function previewTicker(symbol) {
     try {
         const quote = await searchQuotes.getOne(symbol);
@@ -482,7 +447,7 @@ async function loadSavedSymbols() {
         const data = await response.json();
         savedSymbols = new Set(Array.isArray(data.watchlist) ? data.watchlist : []);
         updateSearchStars();
-        renderWatchlistPills([...savedSymbols]);
+        renderWatchlistPills();
         return true;
     } catch (error) {
         console.error('Could not load saved symbols:', error);
@@ -528,8 +493,8 @@ async function toggleSearchStar(symbol, button) {
         }
 
         updateSearchStars();
+        renderWatchlistPills();
         renderWatchlistCards();
-        await refreshWatchlistList();
     } catch (error) {
         alert(error.message || 'Could not update watchlist');
     } finally {
@@ -537,212 +502,9 @@ async function toggleSearchStar(symbol, button) {
     }
 }
 
-function renderSearchResults(results, requestId) {
-    const dropdown = document.getElementById('search-dropdown');
-    dropdown.replaceChildren();
-
-    if (results.length === 0) {
-        const empty = document.createElement('div');
-        empty.className = 'dropdown-empty';
-        empty.textContent = 'No supported symbols found';
-        dropdown.appendChild(empty);
-        return;
-    }
-
-    const visibleResults = results.slice(0, 5);
-    const quotePromises = searchQuotes.getMany(visibleResults.map((result) => {
-        return result.symbol;
-    }));
-    const intradayPromises = historyClient.getIntradayMany(visibleResults.map((result) => {
-        return result.symbol;
-    }));
-
-    for (const result of visibleResults) {
-        const row = document.createElement('div');
-        row.className = 'dropdown-item';
-
-        const star = document.createElement('button');
-        star.type = 'button';
-        star.className = 'dropdown-star';
-        star.dataset.symbol = result.symbol;
-        star.addEventListener('click', () => {
-            toggleSearchStar(result.symbol, star);
-        });
-
-        const select = document.createElement('button');
-        select.type = 'button';
-        select.className = 'dropdown-select';
-        select.addEventListener('click', () => {
-            selectTicker(result.symbol);
-        });
-
-        const identity = document.createElement('span');
-        identity.className = 'dropdown-identity';
-        const symbol = document.createElement('strong');
-        symbol.textContent = result.symbol;
-        const name = document.createElement('small');
-        name.textContent = result.instrument_name;
-        identity.append(symbol, name);
-
-        const quoteLabel = document.createElement('span');
-        quoteLabel.className = 'dropdown-quote';
-        quoteLabel.textContent = 'Loading…';
-
-        const chart = document.createElement('span');
-        chart.className = 'dropdown-chart-wrap';
-        const chartLabel = document.createElement('span');
-        chartLabel.className = 'sparkline-label';
-        chartLabel.textContent = '1D';
-        const chartGraphic = document.createElement('span');
-        chartGraphic.className = 'sparkline-graphic';
-        chartGraphic.appendChild(MarketCharts.createSparkline([]));
-        chart.append(chartLabel, chartGraphic);
-
-        select.append(identity, quoteLabel, chart);
-        row.append(star, select);
-        dropdown.appendChild(row);
-        loadIntradaySparkline(
-            result.symbol,
-            chart,
-            intradayPromises.get(result.symbol),
-            quotePromises.get(result.symbol)
-        );
-
-        quotePromises.get(result.symbol).then((quote) => {
-            if (requestId !== searchRequestId || !row.isConnected) {
-                return;
-            }
-
-            if (Number(quote.price) > 0) {
-                const hasChange = Number.isFinite(quote.change);
-                quoteLabel.replaceChildren();
-                const price = document.createElement('strong');
-                price.textContent = Number(quote.price).toFixed(2);
-                const movement = document.createElement('small');
-                if (hasChange) {
-                    movement.className = quote.change >= 0 ? 'positive' : 'negative';
-                    movement.textContent = `${quote.change >= 0 ? '+' : ''}${quote.change.toFixed(2)}%`;
-                } else {
-                    movement.textContent = 'Change unavailable';
-                }
-                quoteLabel.append(price, movement);
-            } else {
-                quoteLabel.textContent = 'Data unavailable';
-            }
-        }).catch(() => {
-            if (requestId === searchRequestId && row.isConnected) {
-                quoteLabel.textContent = 'Data unavailable';
-            }
-        });
-    }
-
-    updateSearchStars();
-}
-
-async function runSymbolSearch() {
-    const input = document.getElementById('ticker-input');
-    const query = input.value.trim().toUpperCase();
-    const requestId = ++searchRequestId;
-    const dropdown = document.getElementById('search-dropdown');
-
-    if (!query) {
-        dropdown.replaceChildren();
-        return;
-    }
-
-    try {
-        const response = await fetch(`/search?q=${encodeURIComponent(query)}`);
-        if (!response.ok) {
-            throw new Error('Search unavailable');
-        }
-        const results = await response.json();
-        if (requestId === searchRequestId) {
-            renderSearchResults(results, requestId);
-        }
-    } catch (error) {
-        if (requestId === searchRequestId) {
-            dropdown.textContent = 'Search unavailable';
-        }
-    }
-}
-
-document.getElementById('ticker-input').addEventListener('keydown', async function (e) {
-    if (e.key === 'Enter') {
-        clearTimeout(searchTimer);
-        searchRequestId += 1;
-        const ticker = this.value.trim().toUpperCase();
-        document.getElementById('search-dropdown').replaceChildren();
-
-        if (VALID_SYMBOLS.includes(ticker)) {
-            await previewTicker(ticker);
-            this.value = '';
-        }
-    }
-});
-
-document.getElementById('ticker-input').addEventListener('input', function () {
-    clearTimeout(searchTimer);
-    searchRequestId += 1;
-    if (!this.value.trim()) {
-        document.getElementById('search-dropdown').replaceChildren();
-        return;
-    }
-    searchTimer = setTimeout(runSymbolSearch, 250);
-});
-
-document.addEventListener('click', function (event) {
-    const input = document.getElementById('ticker-input');
-    const dropdown = document.getElementById('search-dropdown');
-    if (!input.contains(event.target) && !dropdown.contains(event.target)) {
-        clearTimeout(searchTimer);
-        searchRequestId += 1;
-        dropdown.replaceChildren();
-    }
-});
-
-function renderWatchlistPills(symbols) {
+function renderWatchlistPills() {
     const list = document.getElementById('watchlist-list');
-    if (!list) {
-        return;
-    }
-
-    list.replaceChildren();
-    for (const symbol of symbols) {
-        const pill = document.createElement('span');
-        pill.className = 'watchlist-pill';
-        const label = document.createElement('span');
-        label.textContent = symbol;
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.setAttribute('aria-label', `Remove ${symbol}`);
-        button.textContent = '×';
-        button.addEventListener('click', async () => {
-            const removed = await removeFromWatchlist(symbol);
-            if (!removed) {
-                return;
-            }
-            await refreshWatchlistList();
-            if (document.body.dataset.page === 'watchlist') {
-                watchlistQuotes = watchlistQuotes.filter((item) => {
-                    return item.symbol !== symbol;
-                });
-                renderWatchlistCards();
-            } else {
-                const card = document.getElementById(`card-${symbol}`);
-                if (card) {
-                    card.remove();
-                }
-            }
-        });
-        pill.append(label, button);
-        list.appendChild(pill);
-    }
-}
-
-async function refreshWatchlistList() {
-    if (document.getElementById('watchlist-list')) {
-        await loadSavedSymbols();
-    }
+    WatchlistUi.renderPills(list, [...savedSymbols], removeSavedSymbol);
 }
 
 async function removeFromWatchlist(symbol) {
@@ -763,6 +525,20 @@ async function removeFromWatchlist(symbol) {
     }
     savedSymbols.delete(symbol);
     updateSearchStars();
+    return true;
+}
+
+async function removeSavedSymbol(symbol) {
+    const removed = await removeFromWatchlist(symbol);
+    if (!removed) {
+        return false;
+    }
+
+    watchlistQuotes = watchlistQuotes.filter((quote) => {
+        return quote.symbol !== symbol;
+    });
+    renderWatchlistPills();
+    renderWatchlistCards();
     return true;
 }
 
@@ -839,6 +615,7 @@ async function loadDashboardQuotes(savedSymbolsPromise) {
 }
 
 document.addEventListener('DOMContentLoaded', function () {
+    searchController.init();
     savedSymbolsReady = loadSavedSymbols();
     const watchlistSort = document.getElementById('watchlist-sort');
     if (watchlistSort) {

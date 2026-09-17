@@ -119,3 +119,40 @@ test('error messages and quote names remain plain text', () => {
     assert.equal(nodes.some((node) => node.textContent === '<script>fake</script>'), true);
     assert.equal(nodes.some((node) => node.textContent === 'Change unavailable'), true);
 });
+
+test('futures detail keeps the settlement basis out of the visible change label', () => {
+    const container = new FakeElement('section');
+    MarketDom.renderQuoteDetail(container, {
+        symbol: 'ES=F',
+        name: 'E-mini S&P 500',
+        price: 6000,
+        change: 1.25,
+        change_basis: 'Prior settlement',
+        day_low: 5900,
+        day_high: 6010,
+        volume: 1000,
+        size_value: null
+    }, {
+        formatMetric(value, formatter) {
+            return value ? formatter(value) : '—';
+        },
+        formatPrice(value) {
+            return value.toFixed(2);
+        },
+        formatCompactNumber(value) {
+            return String(value);
+        },
+        formatCompactCurrency(value) {
+            return String(value);
+        }
+    }, fakeDocument);
+
+    assert.equal(
+        descendants(container).some((node) => node.textContent === '+1.25% today'),
+        true
+    );
+    assert.equal(
+        descendants(container).some((node) => node.textContent.includes('prior settlement')),
+        false
+    );
+});

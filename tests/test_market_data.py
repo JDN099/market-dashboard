@@ -45,6 +45,7 @@ class MarketDataServiceTests(unittest.TestCase):
         self.assertEqual(ticker.calls, 1)
         self.assertEqual(first["price"], 102)
         self.assertEqual(first["sparkline"], [100, 101, 102])
+        self.assertEqual(first["change_basis"], "Previous close")
 
         current_time[0] = 60
         service.get_quote("AAPL")
@@ -91,6 +92,79 @@ class MarketDataServiceTests(unittest.TestCase):
         self.assertEqual(quotes["SPY"]["price"], 101)
         self.assertNotIn("QQQ", quotes)
         self.assertIn("QQQ", errors)
+
+    def test_etf_change_uses_regular_market_fields(self):
+        ticker = FakeTicker(
+            info={
+                "regularMarketPrice": 95,
+                "regularMarketPreviousClose": 100,
+                "previousClose": 95,
+            },
+            closes=[100, 95],
+        )
+        service = MarketDataService(ticker_factory=lambda _symbol: ticker)
+
+        quote = service.get_quote("SPY")
+
+        self.assertEqual(quote["price"], 95)
+        self.assertEqual(quote["change"], -5)
+        self.assertEqual(quote["change_basis"], "Previous close")
+
+    def test_stock_change_falls_back_to_last_two_daily_closes(self):
+        ticker = FakeTicker(
+            info={},
+            closes=[100, 98],
+        )
+        service = MarketDataService(ticker_factory=lambda _symbol: ticker)
+
+        quote = service.get_quote("AAPL")
+
+        self.assertEqual(quote["price"], 98)
+        self.assertEqual(quote["change"], -2)
+        self.assertEqual(quote["change_basis"], "Previous close")
+
+    def test_futures_change_uses_live_price_and_prior_settlement(self):
+        ticker = FakeTicker(
+            info={
+                "regularMarketPrice": 110,
+                "regularMarketPreviousClose": 100,
+                "previousClose": 50,
+            },
+            closes=[80, 90],
+        )
+        service = MarketDataService(ticker_factory=lambda _symbol: ticker)
+
+        quote = service.get_quote("ES=F")
+
+        self.assertEqual(quote["price"], 110)
+        self.assertEqual(quote["change"], 10)
+        self.assertEqual(quote["change_basis"], "Prior settlement")
+
+    def test_futures_change_is_unavailable_without_settlement_reference(self):
+        ticker = FakeTicker(
+            info={
+                "regularMarketPrice": 110,
+                "previousClose": 50,
+            },
+            closes=[80, 90],
+        )
+        service = MarketDataService(ticker_factory=lambda _symbol: ticker)
+
+        quote = service.get_quote("ES=F")
+
+        self.assertEqual(quote["price"], 110)
+        self.assertIsNone(quote["change"])
+        self.assertEqual(quote["change_basis"], "Prior settlement")
+
+    def test_futures_quote_does_not_substitute_a_daily_close_for_live_price(self):
+        ticker = FakeTicker(
+            info={"regularMarketPreviousClose": 100},
+            closes=[100, 101],
+        )
+        service = MarketDataService(ticker_factory=lambda _symbol: ticker)
+
+        with self.assertRaises(MarketDataUnavailable):
+            service.get_quote("ES=F")
 
     def test_history_returns_dated_points_and_rejects_invalid_ranges(self):
         ticker = FakeTicker(closes=[100, 101])

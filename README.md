@@ -8,3 +8,7 @@ A full-stack market intelligence dashboard for stocks and futures
    ```powershell
    py -3.14 -B scripts/migrate.py
    ```
+
+## Data notice
+
+MarketV is an educational project and does not provide financial advice.

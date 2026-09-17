@@ -25,11 +25,12 @@
         </aside>
 
         <main class="main-content">
-            <div class="toolbar-row">
-                <div class="page-header">
+            <div class="page-header">
+                <div class="page-kicker-row">
                     <span class="page-kicker">{% if page == 'markets' %}U.S. market snapshot{% else %}Market dashboard{% endif %}</span>
-                    <h1>{{ title }}</h1>
+                    <span class="data-delay-badge">Delayed data</span>
                 </div>
+                <h1>{{ title }}</h1>
             </div>
 
             {% if page == 'markets' %}
@@ -39,7 +40,7 @@
             <div class="search-wrapper">
                 <div class="search-bar">
                     <input type="text" id="ticker-input" placeholder="Search ticker e.g. AAPL, NQ=F">
-                    <button onclick="searchTicker()">Search</button>
+                    <button id="ticker-search-button" type="button">Search</button>
                 </div>
                 <div id="search-dropdown"></div>
             </div>
@@ -68,6 +69,8 @@
             {% endif %}
             <div id="cards-grid" class="cards-grid"></div>
 
+            <p class="educational-notice" role="note">For educational purposes only. Not financial advice.</p>
+
             <div class="market-flow">
                 <div class="market-flow-label">Market flow</div>
                 <div class="flow-items" id="flow-items">
@@ -78,7 +81,10 @@
 
         <aside class="news-panel">
             <div class="panel-header">
-                <h5>Market News</h5>
+                <div class="panel-title-group">
+                    <h5>Market News</h5>
+                    <span class="delay-label" id="news-status">Delayed</span>
+                </div>
                 <a class="panel-chip" href="/news-page">View all</a>
             </div>
 
@@ -94,6 +100,9 @@
     <script src="/static/quote-client.js"></script>
     <script src="/static/charts.js"></script>
     <script src="/static/history-client.js"></script>
+    <script src="/static/market-ui.js"></script>
+    <script src="/static/watchlist-ui.js"></script>
+    <script src="/static/search.js"></script>
     <script src="/static/script.js"></script>
 </body>
 </html>

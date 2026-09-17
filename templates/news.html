@@ -23,7 +23,10 @@
         </aside>
         <main class="main-content">
             <div class="page-header">
-                <span class="page-kicker">U.S. market sources</span>
+                <div class="page-kicker-row">
+                    <span class="page-kicker">U.S. market sources</span>
+                    <span class="data-delay-badge">Delayed news</span>
+                </div>
                 <h1>News</h1>
             </div>
             <section class="news-browser">
@@ -36,6 +39,7 @@
                 </div>
                 <button class="load-more-button" id="load-more-news" type="button">Load more</button>
             </section>
+            <p class="educational-notice" role="note">For educational purposes only. Not financial advice.</p>
             <div class="market-flow">
                 <div class="market-flow-label">Market flow</div>
                 <div class="flow-items" id="news-flow-items">
@@ -46,7 +50,7 @@
         <aside class="news-panel">
             <div class="panel-header">
                 <h5>Latest</h5>
-                <span class="panel-chip" id="latest-news-status">Live</span>
+                <span class="panel-chip" id="latest-news-status">Delayed</span>
             </div>
             <div class="news-list" id="latest-news-list" aria-live="polite">
                 <p class="news-state">Loading market news…</p>

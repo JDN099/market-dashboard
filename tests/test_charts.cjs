@@ -44,6 +44,10 @@ test('sparkline renders supplied intraday prices', () => {
     );
     assert.equal(chart.children[0].tagName, 'polyline');
     assert.equal(chart.children[0].attributes.points.split(' ').length, 5);
+    assert.equal(chart.children[1].tagName, 'circle');
+    assert.equal(chart.children[1].attributes.class, 'sparkline-endpoint');
+    assert.equal(chart.children[1].attributes.cx, '84.0');
+    assert.equal(chart.children[1].children[0].textContent, 'Latest available price');
 });
 
 test('charts show an unavailable state when there are too few valid prices', () => {
@@ -111,6 +115,19 @@ test('longer selected ranges use their own first-to-last percentage', () => {
 
     assert.match(history.attributes.class, /negative/);
     assert.match(history.attributes['aria-label'], /-4\.76% over selected range/);
+});
+
+test('selected futures 1D chart can use settlement-based change', () => {
+    const history = MarketCharts.createHistoryChart([
+        { close: 105 },
+        { close: 100 }
+    ], 'ES=F', '1D', {
+        changeOverride: 1.25,
+        domDocument: fakeDocument
+    });
+
+    assert.match(history.attributes.class, /positive/);
+    assert.match(history.attributes['aria-label'], /\+1\.25% over selected range/);
 });
 
 test('a flat selected range stays neutral', () => {

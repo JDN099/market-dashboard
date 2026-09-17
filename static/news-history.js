@@ -81,7 +81,7 @@ async function loadLatestNews() {
         if (articles.length === 0) {
             MarketDom.renderNewsState(list, 'No market headlines are available right now.');
         }
-        status.textContent = 'Live';
+        status.textContent = 'Delayed';
     } catch (error) {
         MarketDom.renderNewsState(list, error.message);
         status.textContent = 'Offline';
@@ -112,6 +112,7 @@ async function loadMarketFlow() {
             if (quote && Number.isFinite(quote.change)) {
                 movement.className = quote.change >= 0 ? 'positive' : 'negative';
                 movement.textContent = `${quote.change >= 0 ? '+' : ''}${quote.change.toFixed(2)}%`;
+                movement.title = quote.change_basis || 'Daily change';
             } else {
                 movement.textContent = 'Unavailable';
             }
