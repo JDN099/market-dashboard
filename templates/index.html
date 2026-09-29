@@ -11,13 +11,17 @@
     <div class="layout">
         <aside class="sidebar">
             <div class="brand-wrap">
-                <div class="brand">MarketV</div>
+                <a class="brand" href="/markets">MarketV</a>
+                <button class="mobile-nav-toggle" type="button" data-mobile-nav-toggle aria-expanded="false" aria-controls="primary-navigation">
+                    <span class="sr-only">Toggle navigation</span>
+                    <span class="mobile-nav-icon" aria-hidden="true"></span>
+                </button>
             </div>
 
-            <nav class="side-nav">
-                <a class="nav-item {% if page == 'markets' %}active{% endif %}" href="/markets">Markets</a>
-                <a class="nav-item {% if page == 'watchlist' %}active{% endif %}" href="/watchlist-page">Watchlist</a>
-                <a class="nav-item {% if page == 'economic-calendar' %}active{% endif %}" href="/economic-calendar">Economic Calendar</a>
+            <nav class="side-nav" id="primary-navigation" aria-label="Primary navigation">
+                <a class="nav-item {% if page == 'markets' %}active{% endif %}" href="/markets" {% if page == 'markets' %}aria-current="page"{% endif %}>Markets</a>
+                <a class="nav-item {% if page == 'watchlist' %}active{% endif %}" href="/watchlist-page" {% if page == 'watchlist' %}aria-current="page"{% endif %}>Watchlist</a>
+                <a class="nav-item {% if page == 'economic-calendar' %}active{% endif %}" href="/economic-calendar" {% if page == 'economic-calendar' %}aria-current="page"{% endif %}>Economic Calendar</a>
                 <a class="nav-item nav-item-with-badge {% if page == 'earnings' %}active{% endif %}" href="/earnings"><span>Earnings</span><span class="nav-coming-soon">Coming Soon</span></a>
                 <a class="nav-item nav-item-with-badge {% if page == 'sentiment' %}active{% endif %}" href="/sentiment"><span>Sentiment</span><span class="nav-coming-soon">Coming Soon</span></a>
                 <a class="nav-item {% if page == 'news' %}active{% endif %}" href="/news-page">News</a>
@@ -95,6 +99,7 @@
     </div>
 
     <script id="market-config" type="application/json">{{ market_config | tojson }}</script>
+    <script src="/static/navigation.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="/static/safe-dom.js"></script>
     <script src="/static/quote-client.js"></script>

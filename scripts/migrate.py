@@ -18,6 +18,10 @@ def apply_migrations():
     try:
         with connection.cursor() as cursor:
             cursor.execute(
+                "SELECT pg_advisory_lock(hashtext(%s))",
+                ("marketv_schema_migrations",),
+            )
+            cursor.execute(
                 """
                 CREATE TABLE IF NOT EXISTS schema_migrations (
                     version INTEGER PRIMARY KEY,
@@ -49,6 +53,15 @@ def apply_migrations():
         connection.rollback()
         raise
     finally:
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT pg_advisory_unlock(hashtext(%s))",
+                    ("marketv_schema_migrations",),
+                )
+            connection.commit()
+        except Exception:
+            connection.rollback()
         connection.close()
 
 

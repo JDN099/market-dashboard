@@ -45,7 +45,10 @@ class MarketRoutesTests(unittest.TestCase):
             response = self.client.get("/quote?ticker=SPY")
 
         self.assertEqual(response.status_code, 503)
-        self.assertEqual(response.json["error"], "Quote unavailable for SPY")
+        self.assertEqual(
+            response.json["error"],
+            "Market data is unavailable right now",
+        )
 
     def test_history_route_returns_points(self):
         points = [{"time": "2026-01-01T00:00:00", "close": 100}]

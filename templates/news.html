@@ -10,15 +10,19 @@
     <div class="layout">
         <aside class="sidebar">
             <div class="brand-wrap">
-                <div class="brand">MarketV</div>
+                <a class="brand" href="/markets">MarketV</a>
+                <button class="mobile-nav-toggle" type="button" data-mobile-nav-toggle aria-expanded="false" aria-controls="primary-navigation">
+                    <span class="sr-only">Toggle navigation</span>
+                    <span class="mobile-nav-icon" aria-hidden="true"></span>
+                </button>
             </div>
-            <nav class="side-nav">
+            <nav class="side-nav" id="primary-navigation" aria-label="Primary navigation">
                 <a class="nav-item" href="/markets">Markets</a>
                 <a class="nav-item" href="/watchlist-page">Watchlist</a>
                 <a class="nav-item" href="/economic-calendar">Economic Calendar</a>
                 <a class="nav-item nav-item-with-badge" href="/earnings"><span>Earnings</span><span class="nav-coming-soon">Coming Soon</span></a>
                 <a class="nav-item nav-item-with-badge" href="/sentiment"><span>Sentiment</span><span class="nav-coming-soon">Coming Soon</span></a>
-                <a class="nav-item active" href="/news-page">News</a>
+                <a class="nav-item active" href="/news-page" aria-current="page">News</a>
             </nav>
         </aside>
         <main class="main-content">
@@ -58,6 +62,7 @@
         </aside>
     </div>
     <script id="market-config" type="application/json">{{ market_config | tojson }}</script>
+    <script src="/static/navigation.js"></script>
     <script src="/static/safe-dom.js"></script>
     <script src="/static/news-history.js"></script>
 </body>

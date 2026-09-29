@@ -10,9 +10,13 @@
     <div class="layout">
         <aside class="sidebar">
             <div class="brand-wrap">
-                <div class="brand">MarketV</div>
+                <a class="brand" href="/markets">MarketV</a>
+                <button class="mobile-nav-toggle" type="button" data-mobile-nav-toggle aria-expanded="false" aria-controls="primary-navigation">
+                    <span class="sr-only">Toggle navigation</span>
+                    <span class="mobile-nav-icon" aria-hidden="true"></span>
+                </button>
             </div>
-            <nav class="side-nav" aria-label="Primary navigation">
+            <nav class="side-nav" id="primary-navigation" aria-label="Primary navigation">
                 <a class="nav-item" href="/markets">Markets</a>
                 <a class="nav-item" href="/watchlist-page">Watchlist</a>
                 <a class="nav-item" href="/economic-calendar">Economic Calendar</a>
@@ -61,6 +65,7 @@
     </div>
 
     <script id="market-config" type="application/json">{{ market_config | tojson }}</script>
+    <script src="/static/navigation.js"></script>
     <script src="/static/safe-dom.js"></script>
     <script src="/static/market-ui.js"></script>
     <script src="/static/dashboard-shell.js"></script>

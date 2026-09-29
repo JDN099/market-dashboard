@@ -9,7 +9,11 @@ from urllib.request import Request, urlopen
 
 from dotenv import load_dotenv
 from flask import Flask, g, jsonify, redirect, render_template, request, url_for
+from werkzeug.middleware.proxy_fix import ProxyFix
 
+load_dotenv()
+
+from services.config import debug_enabled, env_flag, is_production
 from services.economic_calendar import (
     CalendarUnavailable,
     economic_calendar_service,
@@ -24,11 +28,23 @@ from services.economic_calendar.service import (
     validate_date_range,
 )
 from services.market_data import MarketDataUnavailable, market_data
+from services.logging_config import configure_logging
 from services.symbols import MARKET_CONFIG, POPULAR_SYMBOLS, VALID_SYMBOLS
 from services.watchlist import WatchlistStore
 
 app = Flask(__name__)
-load_dotenv()
+app.config["ENVIRONMENT"] = os.getenv("APP_ENV", "development")
+
+if env_flag("TRUST_PROXY_HEADERS", default=is_production()):
+    app.wsgi_app = ProxyFix(
+        app.wsgi_app,
+        x_for=1,
+        x_proto=1,
+        x_host=1,
+    )
+
+default_log_level = "INFO" if is_production() else "WARNING"
+configure_logging(app, os.getenv("LOG_LEVEL", default_log_level))
 
 PAGE_TITLES = {
     "markets": "Markets",
@@ -87,8 +103,10 @@ def current_visitor_id():
 @app.after_request
 def attach_visitor_cookie(response):
     if getattr(g, "new_visitor_id", False):
-        secure = request.is_secure or os.getenv("VISITOR_COOKIE_SECURE", "").lower() in (
-            "1", "true", "yes"
+        secure = (
+            is_production()
+            or request.is_secure
+            or env_flag("VISITOR_COOKIE_SECURE", default=False)
         )
         response.set_cookie(
             VISITOR_COOKIE_NAME,
@@ -99,6 +117,42 @@ def attach_visitor_cookie(response):
             samesite="Lax",
         )
     return response
+
+
+@app.before_request
+def start_request_timer():
+    g.request_started_at = time.perf_counter()
+
+
+@app.after_request
+def log_request(response):
+    started_at = getattr(g, "request_started_at", None)
+    duration_ms = None
+    if started_at is not None:
+        duration_ms = round((time.perf_counter() - started_at) * 1000, 2)
+
+    app.logger.info(
+        "request_completed",
+        extra={
+            "duration_ms": duration_ms,
+            "event": "request_completed",
+            "method": request.method,
+            "path": request.path,
+            "status": response.status_code,
+        },
+    )
+    return response
+
+
+def log_provider_failure(provider, error):
+    app.logger.warning(
+        "provider_request_failed",
+        extra={
+            "error_type": type(error).__name__,
+            "event": "provider_request_failed",
+            "provider": provider,
+        },
+    )
 
 
 def classify_news_importance(title):
@@ -193,6 +247,14 @@ def render_dashboard(page="overview"):
 @app.route("/")
 def index():
     return redirect(url_for("markets"))
+
+
+@app.route("/health")
+def health():
+    return jsonify({
+        "status": "ok",
+        "service": "marketv",
+    })
 
 
 @app.route("/overview")
@@ -292,7 +354,8 @@ def economic_calendar_events():
             "code": "invalid_parameters",
             "error": str(exc),
         }), 400
-    except CalendarUnavailable:
+    except CalendarUnavailable as exc:
+        log_provider_failure("economic_calendar", exc)
         return jsonify({
             "code": "provider_unavailable",
             "error": "Economic calendar data is unavailable right now",
@@ -330,7 +393,8 @@ def quote():
     try:
         return jsonify(market_data.get_quote(ticker))
     except MarketDataUnavailable as exc:
-        return jsonify({"error": str(exc)}), 503
+        log_provider_failure("yahoo_finance", exc)
+        return jsonify({"error": "Market data is unavailable right now"}), 503
 
 
 @app.route("/api/quotes")
@@ -362,7 +426,8 @@ def history():
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
     except MarketDataUnavailable as exc:
-        return jsonify({"error": str(exc)}), 503
+        log_provider_failure("yahoo_finance", exc)
+        return jsonify({"error": "Market history is unavailable right now"}), 503
 
     return jsonify({
         "symbol": ticker,
@@ -430,9 +495,10 @@ def news():
             }
         )
     except RuntimeError as exc:
+        log_provider_failure("marketaux", exc)
         return jsonify(
             {
-                "error": str(exc),
+                "error": "Market news is unavailable right now",
             }
         ), 503
 
@@ -442,7 +508,8 @@ def watchlist():
     try:
         symbols = watchlist_store.get_symbols(current_visitor_id())
         return jsonify({"watchlist": symbols})
-    except Exception:
+    except Exception as exc:
+        log_provider_failure("postgresql", exc)
         return jsonify({"error": "Watchlist unavailable"}), 503
 
 
@@ -459,7 +526,8 @@ def add_to_watchlist():
     try:
         watchlist_store.add_symbol(current_visitor_id(), symbol)
         return jsonify({"status": "added", "symbol": symbol})
-    except Exception:
+    except Exception as exc:
+        log_provider_failure("postgresql", exc)
         return jsonify({"error": "Watchlist unavailable"}), 503
 
 
@@ -474,9 +542,10 @@ def remove_from_watchlist():
     try:
         watchlist_store.remove_symbol(current_visitor_id(), symbol)
         return jsonify({"status": "removed", "symbol": symbol})
-    except Exception:
+    except Exception as exc:
+        log_provider_failure("postgresql", exc)
         return jsonify({"error": "Watchlist unavailable"}), 503
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=debug_enabled())
