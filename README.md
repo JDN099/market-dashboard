@@ -1,6 +1,6 @@
 # MarketV
 
-A responsive financial-market dashboard built with Flask, PostgreSQL,
+A financial-market dashboard built with Flask, PostgreSQL,
 and vanilla JavaScript. MarketV combines market data, interactive charts,
 financial news, visitor-specific watchlists, and an official-source U.S.
 economic calendar.
@@ -25,12 +25,11 @@ economic calendar.
 - Five-day search-result sparklines and one-day card sparklines
 - Anonymous watchlists scoped to a secure browser cookie
 - Market Flow strip shared across every page
-- Curated Marketaux news with delayed-data and heuristic importance labels
+- Curated Marketaux news with delayed-data and importance labels
 - Official Bureau of Labor Statistics release schedule with date, country, and MarketV impact filters
 - Accessible mobile navigation, keyboard focus states, and reduced-motion support
 - Explicit loading, empty, delayed, stale, and unavailable states
 
-Earnings and Sentiment are intentionally marked **Coming Soon**. Their navigation entries remain visible so the product roadmap is clear without presenting placeholder data as complete functionality.
 
 ## Architecture
 
@@ -45,8 +44,6 @@ Browser
 Production
   GitHub → GitHub Actions → Render web service → Neon PostgreSQL
 ```
-
-Provider code stays on the Flask server. API keys and database credentials are never sent to the browser. The economic-calendar service uses a replaceable provider interface so another official source can be added without rewriting the UI.
 
 ### Market-data caching
 
@@ -85,7 +82,6 @@ BLS supplies the release schedule. BLS does **not** supply MarketV's high, mediu
 
 ## Security measures
 
-- Provider keys and database credentials remain server-side environment variables.
 - Hosted database connections require SSL unless the connection string already specifies its own SSL mode.
 - External news content is rendered with `textContent`; article links are restricted to HTTP(S).
 - Visitor cookies are HTTP-only, `SameSite=Lax`, and secure in production.
