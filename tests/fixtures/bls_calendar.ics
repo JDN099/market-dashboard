@@ -1,0 +1,57 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//U.S. Bureau of Labor Statistics//Release Calendar//EN
+BEGIN:VEVENT
+UID:cpi-january@example.bls.gov
+DTSTART;TZID=America/New_York:20260115T083000
+SUMMARY:Consumer Price Index for December 2025
+DESCRIPTION:Consumer Price Index release\, including all items\; seasonally adjusted.\nOfficial release.
+URL:https://www.bls.gov/news.release/cpi.nr0.htm
+END:VEVENT
+BEGIN:VEVENT
+UID:jobs-july@example.bls.gov
+DTSTART;TZID=America/New_York:20260702T083000
+SUMMARY:Employment Situation for June 2026
+DESCRIPTION:Employment Situation and Nonfarm Payrolls
+URL:https://www.bls.gov/news.release/empsit.nr0.htm
+END:VEVENT
+BEGIN:VEVENT
+UID:jolts-folded@example.bls.gov
+DTSTART;TZID=US-Eastern:20260707T100000
+SUMMARY:Job Openings and Labor Turnover Survey for May 2026
+DESCRIPTION:This description is folded across a long calendar line and
+ continues without inserting another separator.
+URL:https://www.bls.gov/news.release/jolts.nr0.htm
+END:VEVENT
+BEGIN:VEVENT
+UID:real-earnings@example.bls.gov
+DTSTART;TZID="Eastern Standard Time":20260714T083000
+SUMMARY:Real Earnings - June 2026
+END:VEVENT
+BEGIN:VEVENT
+UID:duplicate-event@example.bls.gov
+DTSTART:20260720T140000Z
+SUMMARY:Producer Price Index for June 2026
+URL:https://www.bls.gov/news.release/ppi.nr0.htm
+END:VEVENT
+BEGIN:VEVENT
+UID:duplicate-event@example.bls.gov
+DTSTART:20260720T143000Z
+SUMMARY:Producer Price Index for June 2026
+URL:https://www.bls.gov/news.release/ppi.nr0.htm
+END:VEVENT
+BEGIN:VEVENT
+UID:other-release@example.bls.gov
+DTSTART;TZID=America/New_York:20260723T100000
+SUMMARY:County Employment and Wages
+URL:javascript:alert(1)
+END:VEVENT
+BEGIN:VEVENT
+UID:malformed-missing-date@example.bls.gov
+SUMMARY:Malformed release
+END:VEVENT
+BEGIN:VEVENT
+DTSTART;TZID=America/New_York:20260730T083000
+SUMMARY:Missing UID release
+END:VEVENT
+END:VCALENDAR

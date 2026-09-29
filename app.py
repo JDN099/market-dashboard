@@ -10,6 +10,19 @@ from urllib.request import Request, urlopen
 from dotenv import load_dotenv
 from flask import Flask, g, jsonify, redirect, render_template, request, url_for
 
+from services.economic_calendar import (
+    CalendarUnavailable,
+    economic_calendar_service,
+    parse_filter_values,
+    parse_iso_date,
+)
+from services.economic_calendar.models import utc_iso
+from services.economic_calendar.service import (
+    SUPPORTED_COUNTRIES,
+    SUPPORTED_IMPORTANCES,
+    current_week,
+    validate_date_range,
+)
 from services.market_data import MarketDataUnavailable, market_data
 from services.symbols import MARKET_CONFIG, POPULAR_SYMBOLS, VALID_SYMBOLS
 from services.watchlist import WatchlistStore
@@ -199,17 +212,104 @@ def watchlist_page():
 
 @app.route("/economic-calendar")
 def economic_calendar():
-    return render_dashboard("economic-calendar")
+    return render_template(
+        "economic_calendar.html",
+        page="economic-calendar",
+        title=PAGE_TITLES["economic-calendar"],
+        countries={"US": "United States"},
+        market_config=MARKET_CONFIG,
+    )
 
 
 @app.route("/earnings")
 def earnings():
-    return render_dashboard("earnings")
+    return render_template(
+        "coming_soon.html",
+        page="earnings",
+        title=PAGE_TITLES["earnings"],
+        market_config=MARKET_CONFIG,
+    )
 
 
 @app.route("/sentiment")
 def sentiment():
-    return render_dashboard("sentiment")
+    return render_template(
+        "coming_soon.html",
+        page="sentiment",
+        title=PAGE_TITLES["sentiment"],
+        market_config=MARKET_CONFIG,
+    )
+
+
+@app.route("/api/economic-calendar")
+def economic_calendar_events():
+    allowed_parameters = {"start", "end", "country", "importance"}
+    unknown_parameters = sorted(set(request.args) - allowed_parameters)
+    if unknown_parameters:
+        return jsonify({
+            "code": "invalid_parameters",
+            "error": f"Unsupported query parameter: {unknown_parameters[0]}",
+        }), 400
+
+    for parameter in ("start", "end"):
+        if len(request.args.getlist(parameter)) > 1:
+            return jsonify({
+                "code": "invalid_parameters",
+                "error": f"Query parameter cannot be repeated: {parameter}",
+            }), 400
+
+    default_start, default_end = current_week()
+    try:
+        start_date = parse_iso_date(
+            request.args.get("start", default_start.isoformat()),
+            "start",
+        )
+        end_date = parse_iso_date(
+            request.args.get("end", default_end.isoformat()),
+            "end",
+        )
+        validate_date_range(start_date, end_date)
+        countries = parse_filter_values(
+            request.args.getlist("country"),
+            SUPPORTED_COUNTRIES,
+            "country",
+            SUPPORTED_COUNTRIES,
+        )
+        importances = parse_filter_values(
+            request.args.getlist("importance"),
+            SUPPORTED_IMPORTANCES,
+            "importance",
+            SUPPORTED_IMPORTANCES,
+        )
+        result = economic_calendar_service.get_events(
+            start_date,
+            end_date,
+            countries,
+            importances,
+        )
+    except ValueError as exc:
+        return jsonify({
+            "code": "invalid_parameters",
+            "error": str(exc),
+        }), 400
+    except CalendarUnavailable:
+        return jsonify({
+            "code": "provider_unavailable",
+            "error": "Economic calendar data is unavailable right now",
+        }), 503
+
+    return jsonify({
+        "events": [event.to_dict() for event in result.events],
+        "meta": {
+            "start": start_date.isoformat(),
+            "end": end_date.isoformat(),
+            "providers": result.providers,
+            "last_updated": utc_iso(result.last_updated) if result.last_updated else None,
+            "stale": result.stale,
+            "warning": result.warning,
+            "timezone": "UTC",
+        },
+    })
 
 
 @app.route("/news-page")

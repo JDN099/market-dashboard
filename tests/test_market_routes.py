@@ -108,6 +108,7 @@ class MarketRoutesTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn('/static/market-ui.js', page)
+        self.assertIn('/static/dashboard-shell.js', page)
         self.assertIn('/static/watchlist-ui.js', page)
         self.assertIn('/static/search.js', page)
         self.assertIn('id="ticker-search-button"', page)

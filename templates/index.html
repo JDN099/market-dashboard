@@ -18,8 +18,8 @@
                 <a class="nav-item {% if page == 'markets' %}active{% endif %}" href="/markets">Markets</a>
                 <a class="nav-item {% if page == 'watchlist' %}active{% endif %}" href="/watchlist-page">Watchlist</a>
                 <a class="nav-item {% if page == 'economic-calendar' %}active{% endif %}" href="/economic-calendar">Economic Calendar</a>
-                <a class="nav-item {% if page == 'earnings' %}active{% endif %}" href="/earnings">Earnings</a>
-                <a class="nav-item {% if page == 'sentiment' %}active{% endif %}" href="/sentiment">Sentiment</a>
+                <a class="nav-item nav-item-with-badge {% if page == 'earnings' %}active{% endif %}" href="/earnings"><span>Earnings</span><span class="nav-coming-soon">Coming Soon</span></a>
+                <a class="nav-item nav-item-with-badge {% if page == 'sentiment' %}active{% endif %}" href="/sentiment"><span>Sentiment</span><span class="nav-coming-soon">Coming Soon</span></a>
                 <a class="nav-item {% if page == 'news' %}active{% endif %}" href="/news-page">News</a>
             </nav>
         </aside>
@@ -101,6 +101,7 @@
     <script src="/static/charts.js"></script>
     <script src="/static/history-client.js"></script>
     <script src="/static/market-ui.js"></script>
+    <script src="/static/dashboard-shell.js"></script>
     <script src="/static/watchlist-ui.js"></script>
     <script src="/static/search.js"></script>
     <script src="/static/script.js"></script>

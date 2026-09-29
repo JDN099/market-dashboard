@@ -222,107 +222,6 @@ function renderSelectedHistory(detail, quote) {
     });
 }
 
-function formatMarketSymbol(symbol) {
-    const labels = {
-        '^TNX': '10Y',
-        '^VIX': 'VIX',
-        'BTC-USD': 'BTC',
-        'CL=F': 'Crude',
-        'GC=F': 'Gold'
-    };
-
-    return labels[symbol] || symbol;
-}
-
-function renderMarketFlow(quotes, errors = {}) {
-    const flowItems = document.getElementById('flow-items');
-    if (!flowItems) {
-        return;
-    }
-
-    flowItems.replaceChildren();
-    for (const symbol of MARKET_FLOW_SYMBOLS) {
-        const quote = quotes[symbol];
-        const pill = document.createElement('span');
-        pill.className = 'flow-pill';
-        const label = document.createElement('strong');
-        label.textContent = formatMarketSymbol(symbol);
-        const movement = document.createElement('span');
-
-        if (quote) {
-            const display = MarketUi.describeChange(quote.change, 'Unavailable');
-            movement.className = display.className;
-            movement.textContent = display.text;
-            movement.title = quote.change_basis || 'Daily change';
-        } else {
-            movement.textContent = 'Unavailable';
-            movement.title = errors[symbol] || 'Change unavailable';
-        }
-
-        pill.append(label, movement);
-        flowItems.appendChild(pill);
-    }
-}
-
-function relativeTime(timestamp) {
-    const publishedAt = new Date(timestamp).getTime();
-    if (Number.isNaN(publishedAt)) {
-        return 'Recently';
-    }
-
-    const minutes = Math.max(0, Math.floor((Date.now() - publishedAt) / 60000));
-    if (minutes < 1) {
-        return 'Just now';
-    }
-    if (minutes < 60) {
-        return `${minutes}m ago`;
-    }
-
-    return `${Math.floor(minutes / 60)}h ago`;
-}
-
-function renderNews(articles) {
-    const newsList = document.getElementById('news-list');
-    if (!newsList) {
-        return;
-    }
-
-    newsList.replaceChildren();
-    for (const article of articles) {
-        newsList.appendChild(MarketDom.createNewsArticle(article, relativeTime));
-    }
-}
-
-async function loadNews() {
-    const newsList = document.getElementById('news-list');
-    const status = document.getElementById('news-status');
-    if (!newsList) {
-        return;
-    }
-
-    try {
-        const response = await fetch('/news');
-        const data = await response.json();
-        if (!response.ok) {
-            throw new Error(data.error || 'Unable to load market news');
-        }
-        if (!Array.isArray(data.articles) || data.articles.length === 0) {
-            MarketDom.renderNewsState(newsList, 'No market headlines are available right now.');
-            return;
-        }
-
-        renderNews(data.articles);
-        if (status) {
-            status.textContent = 'Delayed';
-        }
-    } catch (error) {
-        MarketDom.renderNewsState(newsList, error.message);
-        if (status) {
-            status.textContent = 'Offline';
-        }
-    }
-}
-
 function buildCard(quote, selected = false) {
     const card = document.createElement('div');
     card.className = `ticker-card${selected ? ' selected' : ''}`;
@@ -574,7 +473,12 @@ async function loadDashboardQuotes(savedSymbolsPromise) {
         }
     }
 
-    renderMarketFlow(quotes, errors);
+    DashboardShell.renderMarketFlow(
+        document.getElementById('flow-items'),
+        MARKET_FLOW_SYMBOLS,
+        quotes,
+        errors
+    );
     for (const [symbol, quote] of Object.entries(quotes)) {
         searchQuotes.seed(symbol, quote);
     }
@@ -624,6 +528,6 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
     loadDashboardQuotes(savedSymbolsReady);
-    loadNews();
-    window.setInterval(loadNews, 60000);
+    DashboardShell.loadNews();
+    window.setInterval(DashboardShell.loadNews, 60000);
 });

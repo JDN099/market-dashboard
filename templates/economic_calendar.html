@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }} | MarketV</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body data-page="{{ page }}">
+    <div class="layout">
+        <aside class="sidebar">
+            <div class="brand-wrap">
+                <div class="brand">MarketV</div>
+            </div>
+            <nav class="side-nav" aria-label="Primary navigation">
+                <a class="nav-item" href="/markets">Markets</a>
+                <a class="nav-item" href="/watchlist-page">Watchlist</a>
+                <a class="nav-item active" href="/economic-calendar" aria-current="page">Economic Calendar</a>
+                <a class="nav-item nav-item-with-badge" href="/earnings"><span>Earnings</span><span class="nav-coming-soon">Coming Soon</span></a>
+                <a class="nav-item nav-item-with-badge" href="/sentiment"><span>Sentiment</span><span class="nav-coming-soon">Coming Soon</span></a>
+                <a class="nav-item" href="/news-page">News</a>
+            </nav>
+        </aside>
+
+        <main class="main-content calendar-page">
+            <header class="page-header">
+                <div class="page-kicker-row">
+                    <span class="page-kicker">Macro events</span>
+                    <span class="data-delay-badge" id="calendar-data-status">Official source</span>
+                </div>
+                <h1>Economic Calendar</h1>
+                <p class="market-intro">Track scheduled market-moving economic releases from official sources.</p>
+            </header>
+
+            <section class="calendar-toolbar" aria-label="Economic calendar controls">
+                <div class="calendar-date-navigation">
+                    <button id="calendar-previous" type="button" aria-label="Previous day">Previous</button>
+                    <button id="calendar-today" type="button">Today</button>
+                    <button id="calendar-next" type="button" aria-label="Next day">Next</button>
+                    <label class="calendar-field" for="calendar-date">
+                        <span>Date</span>
+                        <input id="calendar-date" type="date">
+                    </label>
+                </div>
+                <div class="calendar-filters">
+                    <label class="calendar-field" for="calendar-country">
+                        <span>Country</span>
+                        <select id="calendar-country">
+                            {% for code, name in countries.items() %}
+                            <option value="{{ code }}">{{ name }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <fieldset class="calendar-impact-filter" id="calendar-importance">
+                        <legend>MarketV impact</legend>
+                        <label><input type="checkbox" value="high" checked> High</label>
+                        <label><input type="checkbox" value="medium" checked> Medium</label>
+                        <label><input type="checkbox" value="low" checked> Low</label>
+                    </fieldset>
+                </div>
+            </section>
+
+            <div class="calendar-context">
+                <strong id="calendar-selected-date">Today</strong>
+                <div class="calendar-context-details">
+                    <span id="calendar-timezone">Times shown in your local timezone</span>
+                    <span id="calendar-last-updated">Waiting for official data</span>
+                </div>
+            </div>
+
+            <p class="calendar-warning" id="calendar-stale-warning" role="status" hidden></p>
+
+            <section class="calendar-board" aria-labelledby="calendar-selected-date">
+                <div class="calendar-table-header" aria-hidden="true">
+                    <span>Time</span>
+                    <span>Event</span>
+                    <span>Impact</span>
+                    <span>Actual</span>
+                    <span>Forecast</span>
+                    <span>Previous</span>
+                </div>
+                <div id="economic-calendar-list" class="calendar-event-list" aria-live="polite" aria-busy="true">
+                    <div class="calendar-state calendar-state--loading">Loading economic events…</div>
+                </div>
+            </section>
+
+            <div class="calendar-attribution" role="note">
+                <a href="https://www.bls.gov/schedule/news_release/" target="_blank" rel="noopener noreferrer">Source: U.S. Bureau of Labor Statistics</a>
+                <span>Impact levels are MarketV impact classifications, not official BLS ratings. MarketV normalizes the official schedule; BLS is not responsible for MarketV’s processing or analysis.</span>
+            </div>
+
+            <p class="educational-notice" role="note">For educational purposes only. Not financial advice.</p>
+
+            <div class="market-flow">
+                <div class="market-flow-label">Market flow</div>
+                <div class="flow-items" id="flow-items">
+                    <span class="flow-pill"><strong>Market data</strong> Loading…</span>
+                </div>
+            </div>
+        </main>
+
+        <aside class="news-panel">
+            <div class="panel-header">
+                <div class="panel-title-group">
+                    <h5>Market News</h5>
+                    <span class="delay-label" id="news-status">Delayed</span>
+                </div>
+                <a class="panel-chip" href="/news-page">View all</a>
+            </div>
+            <div class="news-list" id="news-list" aria-live="polite">
+                <p class="news-state">Loading market news…</p>
+            </div>
+        </aside>
+    </div>
+
+    <script id="market-config" type="application/json">{{ market_config | tojson }}</script>
+    <script src="/static/safe-dom.js"></script>
+    <script src="/static/market-ui.js"></script>
+    <script src="/static/dashboard-shell.js"></script>
+    <script src="/static/economic-calendar-ui.js"></script>
+    <script src="/static/economic-calendar.js"></script>
+</body>
+</html>
