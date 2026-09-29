@@ -154,7 +154,7 @@ The automated tests use fixtures and mocks. They do not require live Yahoo Finan
 
 ```powershell
 py -3.12 -B -m unittest discover -s tests -p "test_*.py" -v
-node --test --test-isolation=none tests/*.cjs
+node scripts/run_javascript_tests.cjs
 Get-ChildItem static -Filter *.js | ForEach-Object { node --check $_.FullName }
 git diff --check
 ```

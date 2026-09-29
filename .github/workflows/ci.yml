@@ -34,7 +34,7 @@ jobs:
           node-version: "22"
 
       - name: Run JavaScript tests
-        run: node --test --test-isolation=none tests/*.cjs
+        run: node scripts/run_javascript_tests.cjs
 
       - name: Check JavaScript syntax
         run: find static -name "*.js" -print0 | xargs -0 -n1 node --check
