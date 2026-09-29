@@ -3,235 +3,319 @@ import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 
-import pandas as pd
+from services.market_data import (
+    CreditBudget,
+    MarketDataService,
+    MarketDataUnavailable,
+)
+from services.symbols import MARKET_FLOW_SYMBOLS, MARKET_SYMBOLS, VALID_SYMBOLS
+from services.twelve_data import (
+    TwelveDataClient,
+    TwelveDataConfigurationError,
+    TwelveDataError,
+    TwelveDataRateLimited,
+    TwelveDataUnsupported,
+    asset_type_for,
+    display_name_for,
+)
 
-from services.market_data import MarketDataService, MarketDataUnavailable
+
+def quote(symbol, price=100, change=1):
+    return {
+        "symbol": symbol,
+        "name": symbol,
+        "price": price,
+        "change": change,
+        "change_basis": "Previous close",
+        "market_cap": None,
+        "size_value": None,
+        "size_label": "Asset type",
+        "size_display": asset_type_for(symbol),
+        "instrument_type": asset_type_for(symbol),
+        "volume": 1000,
+        "day_high": price + 1,
+        "day_low": price - 1,
+        "sparkline": [],
+    }
 
 
-class FakeTicker:
-    def __init__(self, info=None, closes=None, delay=0):
-        self.info = info or {}
-        self.closes = closes or []
+class FakeProvider:
+    def __init__(self, delay=0):
         self.delay = delay
-        self.calls = 0
+        self.quote_calls = []
+        self.history_calls = []
+        self.quote_failure = None
+        self.history_failure = None
+        self.quote_errors = {}
+        self.history_errors = {}
         self.lock = threading.Lock()
 
-    def history(self, **_kwargs):
+    def fetch_quotes(self, symbols):
         with self.lock:
-            self.calls += 1
+            self.quote_calls.append(list(symbols))
         if self.delay:
             time.sleep(self.delay)
-        dates = pd.date_range("2026-01-01", periods=len(self.closes))
-        return pd.DataFrame({"Close": self.closes}, index=dates)
+        if self.quote_failure:
+            raise self.quote_failure
+        return (
+            {
+                symbol: quote(symbol)
+                for symbol in symbols
+                if symbol not in self.quote_errors
+            },
+            {
+                symbol: self.quote_errors[symbol]
+                for symbol in symbols
+                if symbol in self.quote_errors
+            },
+        )
+
+    def fetch_histories(self, symbols, period, interval):
+        with self.lock:
+            self.history_calls.append((list(symbols), period, interval))
+        if self.history_failure:
+            raise self.history_failure
+        return (
+            {
+                symbol: [
+                    {"time": "2026-01-01T00:00:00+00:00", "close": 100},
+                    {"time": "2026-01-02T00:00:00+00:00", "close": 101},
+                ]
+                for symbol in symbols
+                if symbol not in self.history_errors
+            },
+            {
+                symbol: self.history_errors[symbol]
+                for symbol in symbols
+                if symbol in self.history_errors
+            },
+        )
+
+
+def generous_budget(clock):
+    return CreditBudget(
+        minute_limit=100,
+        daily_limit=1000,
+        clock=clock,
+    )
+
+
+class TwelveDataClientTests(unittest.TestCase):
+    def test_successful_batch_quote_is_normalized(self):
+        client = TwelveDataClient(api_key="fixture-key")
+        client._request = lambda _endpoint, _parameters: {
+            "SPY": {
+                "symbol": "SPY",
+                "name": "SPDR S&P 500 ETF Trust",
+                "close": "501.25",
+                "previous_close": "500.00",
+                "percent_change": "0.25",
+                "high": "502.00",
+                "low": "498.50",
+                "volume": "123456",
+                "datetime": "2026-09-29 16:00:00",
+            },
+            "GLD": {
+                "symbol": "GLD",
+                "name": "SPDR Gold Shares",
+                "close": "250.50",
+                "previous_close": "252.00",
+                "percent_change": "-0.5952",
+                "high": "253.00",
+                "low": "249.00",
+                "volume": "1000",
+                "datetime": "2026-09-29 16:00:00",
+            },
+        }
+
+        quotes, errors = client.fetch_quotes(["SPY", "GLD"])
+
+        self.assertEqual(errors, {})
+        self.assertEqual(quotes["SPY"]["price"], 501.25)
+        self.assertEqual(quotes["GLD"]["change"], -0.6)
+        self.assertEqual(quotes["GLD"]["name"], "SPDR Gold Shares ETF")
+        self.assertEqual(quotes["GLD"]["instrument_type"], "ETF")
+
+    def test_history_batch_is_normalized_oldest_first(self):
+        client = TwelveDataClient(api_key="fixture-key")
+        client._request = lambda _endpoint, _parameters: {
+            "EUR/USD": {
+                "meta": {"symbol": "EUR/USD"},
+                "values": [
+                    {"datetime": "2026-09-29 12:00:00", "close": "1.1800"},
+                    {"datetime": "2026-09-29 11:55:00", "close": "1.1790"},
+                ],
+                "status": "ok",
+            }
+        }
+
+        histories, errors = client.fetch_histories(
+            ["EUR/USD"],
+            "1d",
+            "5m",
+        )
+
+        self.assertEqual(errors, {})
+        self.assertEqual(
+            [point["close"] for point in histories["EUR/USD"]],
+            [1.179, 1.18],
+        )
+        self.assertTrue(histories["EUR/USD"][0]["time"].endswith("+00:00"))
+
+    def test_missing_api_key_fails_before_opening_network(self):
+        opened = []
+        client = TwelveDataClient(
+            api_key="",
+            opener=lambda *_args, **_kwargs: opened.append(True),
+        )
+
+        with self.assertRaises(TwelveDataConfigurationError):
+            client.fetch_quotes(["SPY"])
+
+        self.assertEqual(opened, [])
+
+    def test_symbol_mappings_identify_etfs_and_currency_pairs(self):
+        self.assertEqual(asset_type_for("GLD"), "ETF")
+        self.assertEqual(asset_type_for("USO"), "ETF")
+        self.assertEqual(asset_type_for("BTC/USD"), "Cryptocurrency")
+        self.assertEqual(asset_type_for("EUR/USD"), "Forex")
+        self.assertEqual(display_name_for("USO", None), "United States Oil Fund ETF")
+        self.assertNotIn("ES=F", VALID_SYMBOLS)
+        self.assertEqual(
+            MARKET_SYMBOLS,
+            ("SPY", "QQQ", "IWM", "DIA", "GLD", "USO"),
+        )
+        self.assertEqual(len(MARKET_FLOW_SYMBOLS), 8)
 
 
 class MarketDataServiceTests(unittest.TestCase):
-    def test_quote_is_cached_until_ttl_expires(self):
-        ticker = FakeTicker(
-            info={"shortName": "Apple", "previousClose": 100},
-            closes=[100, 101, 102],
-        )
-        current_time = [0]
-        service = MarketDataService(
-            quote_ttl=60,
-            ticker_factory=lambda _symbol: ticker,
-            clock=lambda: current_time[0],
+    def setUp(self):
+        self.current_time = [0]
+        self.clock = lambda: self.current_time[0]
+        self.provider = FakeProvider()
+        self.service = MarketDataService(
+            provider=self.provider,
+            quote_ttl=900,
+            quote_stale_ttl=21600,
+            history_ttl=21600,
+            history_stale_ttl=86400,
+            clock=self.clock,
+            credit_budget=generous_budget(self.clock),
         )
 
-        first = service.get_quote("AAPL")
-        current_time[0] = 59
-        second = service.get_quote("AAPL")
+    def test_eight_quotes_are_batched_and_cached_for_fifteen_minutes(self):
+        symbols = list(MARKET_FLOW_SYMBOLS)
+
+        first, errors = self.service.get_quotes(symbols)
+        self.current_time[0] = 899
+        second, second_errors = self.service.get_quotes(symbols)
+
+        self.assertEqual(errors, {})
+        self.assertEqual(second_errors, {})
+        self.assertEqual(self.provider.quote_calls, [symbols])
         self.assertEqual(first, second)
-        self.assertEqual(ticker.calls, 1)
-        self.assertEqual(first["price"], 102)
-        self.assertEqual(first["sparkline"], [100, 101, 102])
-        self.assertEqual(first["change_basis"], "Previous close")
+        self.assertTrue(all(item["data_state"] == "delayed" for item in first.values()))
 
-        current_time[0] = 60
-        service.get_quote("AAPL")
-        self.assertEqual(ticker.calls, 2)
+        self.current_time[0] = 900
+        self.service.get_quotes(symbols)
+        self.assertEqual(len(self.provider.quote_calls), 2)
 
-    def test_simultaneous_requests_share_one_provider_fetch(self):
-        ticker = FakeTicker(info={"previousClose": 100}, closes=[101], delay=0.03)
-        service = MarketDataService(ticker_factory=lambda _symbol: ticker)
+    def test_simultaneous_requests_share_one_refresh(self):
+        self.provider.delay = 0.03
 
         with ThreadPoolExecutor(max_workers=8) as executor:
-            results = list(executor.map(service.get_quote, ["SPY"] * 8))
+            results = list(executor.map(self.service.get_quote, ["SPY"] * 8))
 
-        self.assertEqual(ticker.calls, 1)
-        self.assertTrue(all(result["price"] == 101 for result in results))
+        self.assertEqual(len(self.provider.quote_calls), 1)
+        self.assertTrue(all(result["price"] == 100 for result in results))
 
-    def test_missing_price_is_an_error_not_zero(self):
-        ticker = FakeTicker()
-        current_time = [0]
-        service = MarketDataService(
-            ticker_factory=lambda _symbol: ticker,
-            clock=lambda: current_time[0],
-        )
+    def test_stale_quote_is_returned_when_refresh_is_rate_limited(self):
+        self.service.get_quote("SPY")
+        self.current_time[0] = 901
+        self.provider.quote_failure = TwelveDataRateLimited("limited")
 
-        with self.assertRaises(MarketDataUnavailable):
-            service.get_quote("SPY")
-        with self.assertRaises(MarketDataUnavailable):
-            service.get_quote("SPY")
-        self.assertEqual(ticker.calls, 1)
+        stale = self.service.get_quote("SPY")
+        again = self.service.get_quote("SPY")
 
-        current_time[0] = 10
-        with self.assertRaises(MarketDataUnavailable):
-            service.get_quote("SPY")
-        self.assertEqual(ticker.calls, 2)
+        self.assertTrue(stale["stale"])
+        self.assertEqual(stale["data_state"], "stale")
+        self.assertEqual(stale, again)
+        self.assertEqual(len(self.provider.quote_calls), 2)
 
-    def test_batch_reports_partial_failure(self):
-        tickers = {
-            "SPY": FakeTicker(info={"previousClose": 100}, closes=[101]),
-            "QQQ": FakeTicker(),
-        }
-        service = MarketDataService(ticker_factory=lambda symbol: tickers[symbol])
+    def test_rate_limit_without_stale_data_is_reported(self):
+        self.provider.quote_failure = TwelveDataRateLimited("limited")
 
-        quotes, errors = service.get_quotes(["SPY", "QQQ"])
+        with self.assertRaises(MarketDataUnavailable) as context:
+            self.service.get_quote("SPY")
 
-        self.assertEqual(quotes["SPY"]["price"], 101)
-        self.assertNotIn("QQQ", quotes)
-        self.assertIn("QQQ", errors)
+        self.assertEqual(context.exception.state, "rate_limited")
 
-    def test_etf_change_uses_regular_market_fields(self):
-        ticker = FakeTicker(
-            info={
-                "regularMarketPrice": 95,
-                "regularMarketPreviousClose": 100,
-                "previousClose": 95,
-            },
-            closes=[100, 95],
-        )
-        service = MarketDataService(ticker_factory=lambda _symbol: ticker)
+    def test_unsupported_symbol_is_returned_as_partial_batch_error(self):
+        self.provider.quote_errors["FAKE"] = TwelveDataUnsupported("unsupported")
 
-        quote = service.get_quote("SPY")
+        quotes, errors = self.service.get_quotes(["SPY", "FAKE"])
 
-        self.assertEqual(quote["price"], 95)
-        self.assertEqual(quote["change"], -5)
-        self.assertEqual(quote["change_basis"], "Previous close")
+        self.assertIn("SPY", quotes)
+        self.assertIn("unsupported", errors["FAKE"].lower())
 
-    def test_stock_change_falls_back_to_last_two_daily_closes(self):
-        ticker = FakeTicker(
-            info={},
-            closes=[100, 98],
-        )
-        service = MarketDataService(ticker_factory=lambda _symbol: ticker)
+    def test_history_is_cached_for_several_hours(self):
+        first = self.service.get_history("SPY", period="1mo", interval="1d")
+        self.current_time[0] = 21599
+        second = self.service.get_history("SPY", period="1mo", interval="1d")
 
-        quote = service.get_quote("AAPL")
-
-        self.assertEqual(quote["price"], 98)
-        self.assertEqual(quote["change"], -2)
-        self.assertEqual(quote["change_basis"], "Previous close")
-
-    def test_futures_change_uses_live_price_and_prior_settlement(self):
-        ticker = FakeTicker(
-            info={
-                "regularMarketPrice": 110,
-                "regularMarketPreviousClose": 100,
-                "previousClose": 50,
-            },
-            closes=[80, 90],
-        )
-        service = MarketDataService(ticker_factory=lambda _symbol: ticker)
-
-        quote = service.get_quote("ES=F")
-
-        self.assertEqual(quote["price"], 110)
-        self.assertEqual(quote["change"], 10)
-        self.assertEqual(quote["change_basis"], "Prior settlement")
-
-    def test_futures_change_is_unavailable_without_settlement_reference(self):
-        ticker = FakeTicker(
-            info={
-                "regularMarketPrice": 110,
-                "previousClose": 50,
-            },
-            closes=[80, 90],
-        )
-        service = MarketDataService(ticker_factory=lambda _symbol: ticker)
-
-        quote = service.get_quote("ES=F")
-
-        self.assertEqual(quote["price"], 110)
-        self.assertIsNone(quote["change"])
-        self.assertEqual(quote["change_basis"], "Prior settlement")
-
-    def test_futures_quote_does_not_substitute_a_daily_close_for_live_price(self):
-        ticker = FakeTicker(
-            info={"regularMarketPreviousClose": 100},
-            closes=[100, 101],
-        )
-        service = MarketDataService(ticker_factory=lambda _symbol: ticker)
-
-        with self.assertRaises(MarketDataUnavailable):
-            service.get_quote("ES=F")
-
-    def test_history_returns_dated_points_and_rejects_invalid_ranges(self):
-        ticker = FakeTicker(closes=[100, 101])
-        service = MarketDataService(ticker_factory=lambda _symbol: ticker)
-
-        points = service.get_history("SPY", period="1mo", interval="1d")
-        self.assertEqual([point["close"] for point in points], [100, 101])
-        self.assertIn("2026-01-01", points[0]["time"])
-
-        intraday_points = service.get_history("SPY", period="1d", interval="5m")
-        self.assertEqual([point["close"] for point in intraday_points], [100, 101])
-
-        with self.assertRaises(ValueError):
-            service.get_history("SPY", period="5y", interval="1m")
-
-        with self.assertRaises(ValueError):
-            service.get_history("SPY", period="1d", interval="1d")
-
-    def test_history_is_cached_by_symbol_and_range_until_ttl_expires(self):
-        ticker = FakeTicker(closes=[100, 101])
-        current_time = [0]
-        service = MarketDataService(
-            history_ttl=300,
-            ticker_factory=lambda _symbol: ticker,
-            clock=lambda: current_time[0],
-        )
-
-        first = service.get_history("SPY", period="1mo", interval="1d")
-        current_time[0] = 299
-        second = service.get_history("SPY", period="1mo", interval="1d")
         self.assertEqual(first, second)
-        self.assertEqual(ticker.calls, 1)
+        self.assertEqual(len(self.provider.history_calls), 1)
 
-        service.get_history("SPY", period="1mo", interval="1h")
-        self.assertEqual(ticker.calls, 2)
+        self.current_time[0] = 21600
+        self.service.get_history("SPY", period="1mo", interval="1d")
+        self.assertEqual(len(self.provider.history_calls), 2)
 
-        current_time[0] = 300
-        service.get_history("SPY", period="1mo", interval="1d")
-        self.assertEqual(ticker.calls, 3)
+    def test_stale_history_falls_back_after_provider_failure(self):
+        expected = self.service.get_history("SPY", period="1mo", interval="1d")
+        self.current_time[0] = 21601
+        self.provider.history_failure = TwelveDataError("offline")
 
-    def test_intraday_batch_reuses_history_cache_and_reports_partial_errors(self):
-        tickers = {
-            "SPY": FakeTicker(closes=[100, 101]),
-            "QQQ": FakeTicker(),
-        }
-        service = MarketDataService(ticker_factory=lambda symbol: tickers[symbol])
+        actual = self.service.get_history("SPY", period="1mo", interval="1d")
 
-        histories, errors = service.get_intraday_histories(["SPY", "QQQ"])
-        again = service.get_history("SPY", period="1d", interval="5m")
+        self.assertEqual(actual, expected)
+        self.assertEqual(len(self.provider.history_calls), 2)
+        self.assertEqual(
+            self.service.get_history_state("SPY", "1mo", "1d"),
+            "stale",
+        )
 
-        self.assertEqual([point["close"] for point in histories["SPY"]], [100, 101])
-        self.assertEqual(histories["SPY"], again)
-        self.assertEqual(tickers["SPY"].calls, 1)
-        self.assertIn("QQQ", errors)
+    def test_history_batch_returns_success_and_unsupported_state(self):
+        self.provider.history_errors["USO"] = TwelveDataUnsupported("unsupported")
 
-    def test_simultaneous_history_requests_share_one_provider_fetch(self):
-        ticker = FakeTicker(closes=[100, 101], delay=0.03)
-        service = MarketDataService(ticker_factory=lambda _symbol: ticker)
+        histories, errors = self.service.get_intraday_histories(["GLD", "USO"])
 
-        with ThreadPoolExecutor(max_workers=8) as executor:
-            histories = list(executor.map(
-                lambda _index: service.get_history("SPY"),
-                range(8),
-            ))
+        self.assertIn("GLD", histories)
+        self.assertIn("unsupported", errors["USO"].lower())
 
-        self.assertEqual(ticker.calls, 1)
-        self.assertTrue(all(history == histories[0] for history in histories))
+    def test_credit_budget_blocks_more_than_eight_credits_per_minute(self):
+        budget = CreditBudget(clock=self.clock)
+        budget.reserve(8)
+
+        with self.assertRaises(MarketDataUnavailable) as context:
+            budget.reserve(1)
+
+        self.assertEqual(context.exception.state, "rate_limited")
+
+        self.current_time[0] = 61
+        budget.reserve(8)
+
+    def test_credit_budget_enforces_rolling_daily_limit(self):
+        budget = CreditBudget(
+            minute_limit=1000,
+            daily_limit=800,
+            clock=self.clock,
+        )
+        budget.reserve(800)
+
+        with self.assertRaises(MarketDataUnavailable) as context:
+            budget.reserve(1)
+
+        self.assertEqual(context.exception.state, "rate_limited")
 
 
 if __name__ == "__main__":

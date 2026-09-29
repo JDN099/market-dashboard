@@ -96,6 +96,12 @@ const MarketDom = (() => {
         const name = domDocument.createElement('p');
         name.textContent = String(quote.name || quote.symbol || '');
         identity.append(eyebrow, symbol, name);
+        if (quote.stale) {
+            const state = domDocument.createElement('span');
+            state.className = 'data-state-label data-state-label--stale';
+            state.textContent = 'Stale cached Twelve Data quote';
+            identity.appendChild(state);
+        }
 
         const priceGroup = domDocument.createElement('div');
         priceGroup.className = 'detail-price';
@@ -122,7 +128,10 @@ const MarketDom = (() => {
             ],
             [
                 quote.size_label || 'Market cap',
-                formatters.formatMetric(quote.size_value || quote.market_cap, formatters.formatCompactCurrency)
+                quote.size_display || formatters.formatMetric(
+                    quote.size_value || quote.market_cap,
+                    formatters.formatCompactCurrency
+                )
             ]
         ];
 

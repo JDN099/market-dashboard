@@ -193,6 +193,7 @@ async function saveScreenshot(connection, width, filename) {
     await new Promise((resolve) => {
         setTimeout(resolve, 2500);
     });
+    await evaluate(connection, "window.scrollTo(0, 0)");
     const result = await connection.send("Page.captureScreenshot", {
         captureBeyondViewport: false,
         format: "png",

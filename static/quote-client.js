@@ -1,5 +1,5 @@
 const QuoteClient = (() => {
-    function create(fetchQuotes, now = Date.now, ttlMilliseconds = 60000) {
+    function create(fetchQuotes, now = Date.now, ttlMilliseconds = 900000) {
         const cache = new Map();
 
         function seed(symbol, quote) {

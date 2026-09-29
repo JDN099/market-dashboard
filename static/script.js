@@ -15,12 +15,32 @@ const HISTORY_PERIODS = [
     { value: '3mo', label: '3M', interval: '1d' },
     { value: '1y', label: '1Y', interval: '1d' }
 ];
-const searchQuotes = QuoteClient.create(async (symbols) => {
-    const response = await fetch(`/api/quotes?symbols=${encodeURIComponent(symbols.join(','))}`);
-    if (!response.ok) {
-        throw new Error('Quote unavailable');
+const PROVIDER_BATCH_SIZE = 8;
+
+async function fetchQuoteBatches(symbols) {
+    const result = {
+        quotes: {},
+        errors: {}
+    };
+
+    for (let start = 0; start < symbols.length; start += PROVIDER_BATCH_SIZE) {
+        const batch = symbols.slice(start, start + PROVIDER_BATCH_SIZE);
+        const response = await fetch(`/api/quotes?symbols=${encodeURIComponent(batch.join(','))}`);
+        const data = await response.json();
+        Object.assign(result.quotes, data.quotes || {});
+        Object.assign(result.errors, data.errors || {});
+        if (!response.ok && !data.errors) {
+            for (const symbol of batch) {
+                result.errors[symbol] = data.error || 'Market data unavailable';
+            }
+        }
     }
-    return response.json();
+
+    return result;
+}
+
+const searchQuotes = QuoteClient.create(async (symbols) => {
+    return fetchQuoteBatches(symbols);
 });
 const historyClient = HistoryClient.create(
     async (symbol, period, interval) => {
@@ -29,13 +49,18 @@ const historyClient = HistoryClient.create(
         if (!response.ok) {
             throw new Error(data.error || 'Price history unavailable');
         }
-        return data.points;
+        const points = data.points;
+        points.dataState = data.data_state || 'delayed';
+        return points;
     },
     async (symbols) => {
         const response = await fetch(`/api/history/batch?symbols=${encodeURIComponent(symbols.join(','))}`);
         const data = await response.json();
         if (!response.ok && !data.errors) {
             throw new Error(data.error || 'Price history unavailable');
+        }
+        for (const [symbol, points] of Object.entries(data.histories || {})) {
+            points.dataState = data.states?.[symbol] || 'delayed';
         }
         return data;
     }
@@ -72,7 +97,7 @@ function formatCompactNumber(value) {
 }
 
 function formatPrice(value) {
-    return value.toFixed(2);
+    return value < 10 ? value.toFixed(4) : value.toFixed(2);
 }
 
 function showQuoteDetail(quote) {
@@ -102,34 +127,57 @@ function requestHistory(symbol, period) {
 function loadIntradaySparkline(symbol, container, historyRequest, quoteRequest) {
     container.title = `${symbol} 1D intraday prices; color follows daily percentage change`;
     const changeRequest = quoteRequest.then((quote) => quote.change, () => null);
-    Promise.all([historyRequest, changeRequest]).then(([points, dailyChange]) => {
+    return Promise.all([historyRequest, changeRequest]).then(([points, dailyChange]) => {
         if (container.isConnected) {
             const closes = points.map((point) => point.close);
             const graphic = container.querySelector('.sparkline-graphic');
             graphic.replaceChildren(MarketCharts.createSparkline(closes, { dailyChange }));
+            if (points.dataState === 'stale') {
+                container.title = `${symbol} stale cached 1D prices`;
+            }
         }
-    }).catch(() => {
+        return { available: true };
+    }).catch((error) => {
         if (container.isConnected) {
-            container.title = `${symbol} 1D trend unavailable`;
+            container.title = error.message || `${symbol} 1D trend unavailable`;
             const graphic = container.querySelector('.sparkline-graphic');
             graphic.replaceChildren(MarketCharts.createSparkline([]));
         }
+        return {
+            available: false,
+            rateLimited: String(error.message || '').toLowerCase().includes('rate limit')
+        };
     });
 }
 
-function loadCardSparklines(quotes) {
+function loadCardSparklines(quotes, allowRateLimitRetry = true) {
     if (quotes.length === 0) {
         return;
     }
     const symbols = quotes.map((quote) => quote.symbol);
     const requests = historyClient.getIntradayMany(symbols);
+    const renderRequests = [];
     for (const quote of quotes) {
         const card = document.getElementById(`card-${quote.symbol}`);
         const container = card && card.querySelector('.card-sparkline');
         if (container) {
-            loadIntradaySparkline(quote.symbol, container, requests.get(quote.symbol), Promise.resolve(quote));
+            renderRequests.push(loadIntradaySparkline(
+                quote.symbol,
+                container,
+                requests.get(quote.symbol),
+                Promise.resolve(quote)
+            ));
         }
     }
+
+    Promise.all(renderRequests).then((results) => {
+        const wasRateLimited = results.some((result) => result.rateLimited);
+        if (allowRateLimitRetry && wasRateLimited) {
+            window.setTimeout(() => {
+                loadCardSparklines(quotes, false);
+            }, 61000);
+        }
+    });
 }
 
 function renderSelectedHistory(detail, quote) {
@@ -182,14 +230,9 @@ function renderSelectedHistory(detail, quote) {
             return;
         }
         const label = HISTORY_PERIODS.find((item) => item.value === period).label;
-        const usesSettlement = period === '1d'
-            && quote.change_basis === 'Prior settlement'
-            && Number.isFinite(quote.change);
-        const periodChange = usesSettlement
-            ? quote.change
-            : MarketCharts.calculatePeriodChange(points);
+        const periodChange = MarketCharts.calculatePeriodChange(points);
         const chart = MarketCharts.createHistoryChart(points, quote.symbol, label, {
-            changeOverride: usesSettlement ? quote.change : null
+            changeOverride: null
         });
         if (periodChange === null || !chart) {
             content.textContent = 'Price history unavailable for this range.';
@@ -203,10 +246,14 @@ function renderSelectedHistory(detail, quote) {
             change.classList.add('negative');
         }
         change.textContent = `${label} ${MarketCharts.formatPeriodChange(periodChange)}`;
-        change.title = usesSettlement
-            ? 'Change from prior settlement to current price'
-            : 'Change from first to last plotted price';
+        change.title = 'Change from first to last plotted price';
         summary.appendChild(change);
+        if (points.dataState === 'stale') {
+            const state = document.createElement('span');
+            state.className = 'data-state-label data-state-label--stale';
+            state.textContent = 'Stale cached history';
+            summary.appendChild(state);
+        }
         const dates = document.createElement('div');
         dates.className = 'history-dates';
         const start = document.createElement('span');
@@ -215,9 +262,9 @@ function renderSelectedHistory(detail, quote) {
         end.textContent = MarketCharts.formatHistoryDate(points[points.length - 1].time, period);
         dates.append(start, end);
         content.replaceChildren(chart, dates);
-    }).catch(() => {
+    }).catch((error) => {
         if (requestId === selectedHistoryRequestId && section.isConnected) {
-            content.textContent = 'Price history unavailable right now.';
+            content.textContent = error.message || 'Price history unavailable right now.';
         }
     });
 }
@@ -237,7 +284,7 @@ function buildCard(quote, selected = false) {
     const heading = document.createElement('h5');
     heading.textContent = `${quote.symbol} - ${quote.name}`;
     const price = document.createElement('h3');
-    price.textContent = Number(quote.price).toFixed(2);
+    price.textContent = formatPrice(Number(quote.price));
     const movement = document.createElement('p');
     movement.className = changeDisplay.className;
     movement.title = quote.change_basis || 'Daily change';
@@ -247,6 +294,13 @@ function buildCard(quote, selected = false) {
     footer.className = 'card-footer';
     footer.append(movement, sparkline);
     card.append(heading, price, footer);
+
+    if (quote.stale) {
+        const state = document.createElement('span');
+        state.className = 'data-state-label data-state-label--stale';
+        state.textContent = 'Stale cached data';
+        card.appendChild(state);
+    }
 
     if (document.body.dataset.page === 'watchlist') {
         const removeButton = document.createElement('button');
@@ -295,8 +349,8 @@ function renderWatchlistCards() {
         if (sortBy === 'change') {
             return Number(second.change || 0) - Number(first.change || 0);
         }
-        if (sortBy === 'market_cap') {
-            return Number(second.market_cap || 0) - Number(first.market_cap || 0);
+        if (sortBy === 'price') {
+            return Number(second.price || 0) - Number(first.price || 0);
         }
         return first.symbol.localeCompare(second.symbol);
     });
@@ -460,11 +514,7 @@ async function loadDashboardQuotes(savedSymbolsPromise) {
     let errors = {};
 
     try {
-        const response = await fetch(`/api/quotes?symbols=${encodeURIComponent(symbols.join(','))}`);
-        if (!response.ok) {
-            throw new Error('Market data unavailable');
-        }
-        const data = await response.json();
+        const data = await fetchQuoteBatches(symbols);
         quotes = data.quotes || {};
         errors = data.errors || {};
     } catch (error) {

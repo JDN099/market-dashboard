@@ -31,3 +31,5 @@ services:
         sync: false
       - key: MARKETAUX_API_KEY
         sync: false
+      - key: TWELVE_DATA_API_KEY
+        sync: false

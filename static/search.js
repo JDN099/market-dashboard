@@ -123,7 +123,10 @@ const SearchController = (() => {
                         const display = MarketUi.describeChange(quote.change);
                         quoteLabel.replaceChildren();
                         const price = domDocument.createElement('strong');
-                        price.textContent = Number(quote.price).toFixed(2);
+                        const numericPrice = Number(quote.price);
+                        price.textContent = numericPrice < 10
+                            ? numericPrice.toFixed(4)
+                            : numericPrice.toFixed(2);
                         const movement = domDocument.createElement('small');
                         movement.className = display.className;
                         movement.textContent = display.text;

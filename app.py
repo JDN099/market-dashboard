@@ -29,7 +29,13 @@ from services.economic_calendar.service import (
 )
 from services.market_data import MarketDataUnavailable, market_data
 from services.logging_config import configure_logging
-from services.symbols import MARKET_CONFIG, POPULAR_SYMBOLS, VALID_SYMBOLS
+from services.symbols import (
+    MARKET_CONFIG,
+    POPULAR_SYMBOLS,
+    SYMBOL_EXCHANGES,
+    SYMBOL_NAMES,
+    VALID_SYMBOLS,
+)
 from services.watchlist import WatchlistStore
 
 app = Flask(__name__)
@@ -153,6 +159,18 @@ def log_provider_failure(provider, error):
             "provider": provider,
         },
     )
+
+
+def market_data_error_message(error, history=False):
+    subject = "Market history" if history else "Market data"
+    state = getattr(error, "state", "unavailable")
+    if state == "rate_limited":
+        return f"{subject} is temporarily rate limited"
+    if state == "unsupported":
+        return f"{subject} is unsupported for this symbol"
+    if state == "unconfigured":
+        return f"{subject} is not configured"
+    return f"{subject} is unavailable right now"
 
 
 def classify_news_importance(title):
@@ -393,8 +411,11 @@ def quote():
     try:
         return jsonify(market_data.get_quote(ticker))
     except MarketDataUnavailable as exc:
-        log_provider_failure("yahoo_finance", exc)
-        return jsonify({"error": "Market data is unavailable right now"}), 503
+        log_provider_failure("twelve_data", exc)
+        return jsonify({
+            "error": market_data_error_message(exc, history=False),
+            "state": getattr(exc, "state", "unavailable"),
+        }), 503
 
 
 @app.route("/api/quotes")
@@ -403,8 +424,8 @@ def batch_quotes():
     symbols = list(dict.fromkeys(
         symbol.strip().upper() for symbol in raw_symbols.split(",") if symbol.strip()
     ))
-    if not symbols or len(symbols) > 30:
-        return jsonify({"error": "Provide 1 to 30 symbols"}), 400
+    if not symbols or len(symbols) > 8:
+        return jsonify({"error": "Provide 1 to 8 symbols"}), 400
     if any(symbol not in VALID_SYMBOLS for symbol in symbols):
         return jsonify({"error": "Unsupported symbol"}), 400
 
@@ -426,14 +447,19 @@ def history():
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
     except MarketDataUnavailable as exc:
-        log_provider_failure("yahoo_finance", exc)
-        return jsonify({"error": "Market history is unavailable right now"}), 503
+        log_provider_failure("twelve_data", exc)
+        return jsonify({
+            "error": market_data_error_message(exc, history=True),
+            "state": getattr(exc, "state", "unavailable"),
+        }), 503
 
     return jsonify({
         "symbol": ticker,
         "period": period,
         "interval": interval,
         "points": points,
+        "data_state": market_data.get_history_state(ticker, period, interval),
+        "stale": market_data.get_history_state(ticker, period, interval) == "stale",
     })
 
 
@@ -443,14 +469,18 @@ def batch_intraday_history():
     symbols = list(dict.fromkeys(
         symbol.strip().upper() for symbol in raw_symbols.split(",") if symbol.strip()
     ))
-    if not symbols or len(symbols) > 10:
-        return jsonify({"error": "Provide 1 to 10 symbols"}), 400
+    if not symbols or len(symbols) > 8:
+        return jsonify({"error": "Provide 1 to 8 symbols"}), 400
     if any(symbol not in VALID_SYMBOLS for symbol in symbols):
         return jsonify({"error": "Unsupported symbol"}), 400
 
     histories, errors = market_data.get_intraday_histories(symbols)
     status = 200 if histories else 503
-    return jsonify({"histories": histories, "errors": errors}), status
+    return jsonify({
+        "histories": histories,
+        "errors": errors,
+        "states": market_data.get_intraday_history_states(symbols),
+    }), status
 
 
 @app.route("/search")
@@ -463,13 +493,12 @@ def search():
     seen = set()
     for symbol in POPULAR_SYMBOLS:
         if query in symbol:
-            label = symbol.replace("=F", " futures")
             if symbol not in seen:
                 seen.add(symbol)
                 matches.append({
                     "symbol": symbol,
-                    "instrument_name": label,
-                    "exchange": "Yahoo Finance"
+                    "instrument_name": SYMBOL_NAMES.get(symbol, symbol),
+                    "exchange": SYMBOL_EXCHANGES.get(symbol, "United States")
                 })
     return jsonify(matches[:10])
 

@@ -21,11 +21,10 @@ function relativeTime(timestamp) {
 
 function formatMarketSymbol(symbol) {
     const labels = {
-        '^TNX': '10Y',
-        '^VIX': 'VIX',
-        'BTC-USD': 'BTC',
-        'CL=F': 'Crude',
-        'GC=F': 'Gold'
+        'BTC/USD': 'BTC/USD',
+        'EUR/USD': 'EUR/USD',
+        'GLD': 'GLD',
+        'USO': 'USO'
     };
 
     return labels[symbol] || symbol;
@@ -111,10 +110,13 @@ async function loadMarketFlow() {
             const movement = document.createElement('span');
             if (quote && Number.isFinite(quote.change)) {
                 movement.className = quote.change >= 0 ? 'positive' : 'negative';
-                movement.textContent = `${quote.change >= 0 ? '+' : ''}${quote.change.toFixed(2)}%`;
-                movement.title = quote.change_basis || 'Daily change';
+                const value = `${quote.change >= 0 ? '+' : ''}${quote.change.toFixed(2)}%`;
+                movement.textContent = quote.stale ? `${value} · Stale` : value;
+                movement.title = quote.stale
+                    ? 'Stale cached Twelve Data quote'
+                    : quote.change_basis || 'Daily change';
             } else {
-                movement.textContent = 'Unavailable';
+                movement.textContent = data.errors?.[symbol] || 'Unavailable';
             }
             pill.append(label, movement);
             flowItems.appendChild(pill);

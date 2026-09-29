@@ -125,11 +125,11 @@ test('longer selected ranges use their own first-to-last percentage', () => {
     assert.match(history.attributes['aria-label'], /-4\.76% over selected range/);
 });
 
-test('selected futures 1D chart can use settlement-based change', () => {
+test('selected chart can use an explicit change override', () => {
     const history = MarketCharts.createHistoryChart([
         { close: 105 },
         { close: 100 }
-    ], 'ES=F', '1D', {
+    ], 'GLD', '1D', {
         changeOverride: 1.25,
         domDocument: fakeDocument
     });

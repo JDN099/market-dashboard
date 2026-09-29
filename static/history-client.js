@@ -1,5 +1,5 @@
 const HistoryClient = (() => {
-    function create(fetchOne, fetchIntradayBatch, now = Date.now, ttlMilliseconds = 300000) {
+    function create(fetchOne, fetchIntradayBatch, now = Date.now, ttlMilliseconds = 21600000) {
         const cache = new Map();
 
         function cacheKey(symbol, period, interval) {
@@ -33,8 +33,8 @@ const HistoryClient = (() => {
                 return !cachedRequest(cacheKey(symbol, '1d', '5m'));
             });
 
-            for (let start = 0; start < missing.length; start += 10) {
-                const batch = missing.slice(start, start + 10);
+            for (let start = 0; start < missing.length; start += 8) {
+                const batch = missing.slice(start, start + 8);
                 const batchRequest = fetchIntradayBatch(batch);
                 for (const symbol of batch) {
                     const key = cacheKey(symbol, '1d', '5m');

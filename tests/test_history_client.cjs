@@ -28,7 +28,7 @@ test('visible card histories use one batch and selected 1D reuses it', async () 
     assert.equal((await selected)[0].close, 100);
 });
 
-test('large watchlists are split into batches of ten', async () => {
+test('large watchlists are split into provider-safe batches of eight', async () => {
     const calls = [];
     const symbols = Array.from({ length: 12 }, (_, index) => `S${index}`);
     const client = HistoryClient.create(async () => [], async (batch) => {
@@ -42,7 +42,7 @@ test('large watchlists are split into batches of ten', async () => {
     const requests = client.getIntradayMany(symbols);
     await Promise.all(requests.values());
 
-    assert.deepEqual(calls.map((batch) => batch.length), [10, 2]);
+    assert.deepEqual(calls.map((batch) => batch.length), [8, 4]);
 });
 
 test('failed histories can be retried without refetching successful symbols', async () => {

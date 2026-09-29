@@ -26,6 +26,12 @@ class MarketRoutesTests(unittest.TestCase):
         response = self.client.get("/api/quotes?symbols=SPY,NOT-A-TICKER")
         self.assertEqual(response.status_code, 400)
 
+    def test_batch_rejects_more_than_eight_symbols(self):
+        symbols = "AAPL,MSFT,NVDA,AMZN,GOOGL,META,TSLA,AMD,SPY"
+        response = self.client.get(f"/api/quotes?symbols={symbols}")
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json["error"], "Provide 1 to 8 symbols")
+
     def test_batch_returns_unavailable_when_all_quotes_fail(self):
         with patch.object(app.market_data, "get_quotes", return_value=(
             {},
@@ -100,7 +106,10 @@ class MarketRoutesTests(unittest.TestCase):
         page = response.get_data(as_text=True)
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn("Delayed data", page)
+        self.assertIn("Delayed market data", page)
+        self.assertIn("GLD gold ETF", page)
+        self.assertIn("USO oil ETF", page)
+        self.assertNotIn("index futures", page)
         self.assertIn("For educational purposes only. Not financial advice.", page)
         self.assertNotIn("only — not financial advice", page)
         self.assertIn('id="news-status">Delayed', page)
@@ -116,6 +125,16 @@ class MarketRoutesTests(unittest.TestCase):
         self.assertIn('/static/search.js', page)
         self.assertIn('id="ticker-search-button"', page)
         self.assertNotIn('onclick="searchTicker()', page)
+
+    def test_search_uses_twelve_data_symbols_and_labels(self):
+        response = self.client.get("/search?q=USO")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json[0]["symbol"], "USO")
+        self.assertIn("ETF", response.json[0]["instrument_name"])
+
+        legacy_futures = self.client.get("/search?q=ES=F")
+        self.assertEqual(legacy_futures.json, [])
 
     def test_news_page_displays_delay_and_educational_notices(self):
         response = self.client.get("/news-page")

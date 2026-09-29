@@ -32,18 +32,18 @@
             <div class="page-header">
                 <div class="page-kicker-row">
                     <span class="page-kicker">{% if page == 'markets' %}U.S. market snapshot{% else %}Market dashboard{% endif %}</span>
-                    <span class="data-delay-badge">Delayed data</span>
+                    <span class="data-delay-badge">Delayed market data</span>
                 </div>
                 <h1>{{ title }}</h1>
             </div>
 
             {% if page == 'markets' %}
-            <p class="market-intro">Major U.S. indexes, index futures, and key commodities. Select any card for a detailed snapshot.</p>
+            <p class="market-intro">Major U.S. index ETFs plus the GLD gold ETF and USO oil ETF. Select any card for a detailed snapshot.</p>
             {% endif %}
 
             <div class="search-wrapper">
                 <div class="search-bar">
-                    <input type="text" id="ticker-input" placeholder="Search ticker e.g. AAPL, NQ=F">
+                    <input type="text" id="ticker-input" placeholder="Search ticker e.g. AAPL, GLD, BTC/USD">
                     <button id="ticker-search-button" type="button">Search</button>
                 </div>
                 <div id="search-dropdown"></div>
@@ -60,7 +60,7 @@
                 <select id="watchlist-sort">
                     <option value="symbol">Symbol</option>
                     <option value="change">Daily change</option>
-                    <option value="market_cap">Market cap</option>
+                    <option value="price">Price</option>
                 </select>
             </div>
             <div class="watchlist-empty" id="watchlist-empty" hidden>
@@ -73,7 +73,7 @@
             {% endif %}
             <div id="cards-grid" class="cards-grid"></div>
 
-            <p class="educational-notice" role="note">For educational purposes only. Not financial advice.</p>
+            <p class="educational-notice" role="note">For educational purposes only. Not financial advice. Market data provided by <a href="https://twelvedata.com/" target="_blank" rel="noopener noreferrer">Twelve Data</a>.</p>
 
             <div class="market-flow">
                 <div class="market-flow-label">Market flow</div>

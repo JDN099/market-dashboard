@@ -9,11 +9,10 @@ const DashboardShell = (() => {
 
     function formatMarketSymbol(symbol) {
         const labels = {
-            '^TNX': '10Y',
-            '^VIX': 'VIX',
-            'BTC-USD': 'BTC',
-            'CL=F': 'Crude',
-            'GC=F': 'Gold'
+            'BTC/USD': 'BTC/USD',
+            'EUR/USD': 'EUR/USD',
+            'GLD': 'GLD',
+            'USO': 'USO'
         };
         return labels[symbol] || symbol;
     }
@@ -52,8 +51,10 @@ const DashboardShell = (() => {
             if (quote) {
                 const display = MarketUi.describeChange(quote.change, 'Unavailable');
                 movement.className = display.className;
-                movement.textContent = display.text;
-                movement.title = quote.change_basis || 'Daily change';
+                movement.textContent = quote.stale ? `${display.text} · Stale` : display.text;
+                movement.title = quote.stale
+                    ? 'Stale cached Twelve Data quote'
+                    : quote.change_basis || 'Daily change';
             } else {
                 movement.textContent = 'Unavailable';
                 movement.title = errors[symbol] || 'Change unavailable';
