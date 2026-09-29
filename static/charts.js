@@ -1,4 +1,34 @@
 const MarketCharts = (() => {
+    let areaGradientId = 0;
+
+    function addAreaGradient(svg, prefix, domDocument) {
+        areaGradientId += 1;
+        const gradientId = `${prefix}-fill-${areaGradientId}`;
+        const definitions = domDocument.createElementNS('http://www.w3.org/2000/svg', 'defs');
+        const gradient = domDocument.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
+        gradient.setAttribute('id', gradientId);
+        gradient.setAttribute('x1', '0');
+        gradient.setAttribute('y1', '0');
+        gradient.setAttribute('x2', '0');
+        gradient.setAttribute('y2', '1');
+
+        const start = domDocument.createElementNS('http://www.w3.org/2000/svg', 'stop');
+        start.setAttribute('offset', '0%');
+        start.setAttribute('stop-color', 'currentColor');
+        start.setAttribute('stop-opacity', '0.2');
+
+        const end = domDocument.createElementNS('http://www.w3.org/2000/svg', 'stop');
+        end.setAttribute('offset', '100%');
+        end.setAttribute('stop-color', 'currentColor');
+        end.setAttribute('stop-opacity', '0');
+
+        gradient.appendChild(start);
+        gradient.appendChild(end);
+        definitions.appendChild(gradient);
+        svg.appendChild(definitions);
+        return `url(#${gradientId})`;
+    }
+
     function formatHistoryDate(value, period) {
         const date = new Date(value);
         if (Number.isNaN(date.getTime())) {
@@ -71,9 +101,19 @@ const MarketCharts = (() => {
         svg.setAttribute('aria-label', 'One-day intraday price trend; color follows daily percentage change');
         svg.setAttribute('role', 'img');
 
+        const [firstX] = coordinates[0].split(',');
+        const [lastX, lastY] = coordinates[coordinates.length - 1].split(',');
+        const chartFloor = (height - 3).toFixed(1);
+        const area = domDocument.createElementNS('http://www.w3.org/2000/svg', 'path');
+        area.setAttribute('class', 'sparkline-area');
+        area.setAttribute('fill', addAreaGradient(svg, 'sparkline', domDocument));
+        area.setAttribute(
+            'd',
+            `M ${firstX},${chartFloor} L ${coordinates.join(' L ')} L ${lastX},${chartFloor} Z`
+        );
+
         const line = domDocument.createElementNS('http://www.w3.org/2000/svg', 'polyline');
         line.setAttribute('points', coordinates.join(' '));
-        const [lastX, lastY] = coordinates[coordinates.length - 1].split(',');
         const endpoint = domDocument.createElementNS('http://www.w3.org/2000/svg', 'circle');
         endpoint.setAttribute('class', 'sparkline-endpoint');
         endpoint.setAttribute('cx', lastX);
@@ -82,6 +122,7 @@ const MarketCharts = (() => {
         const endpointTitle = domDocument.createElementNS('http://www.w3.org/2000/svg', 'title');
         endpointTitle.textContent = 'Latest available price';
         endpoint.appendChild(endpointTitle);
+        svg.appendChild(area);
         svg.appendChild(line);
         svg.appendChild(endpoint);
         return svg;
@@ -127,8 +168,20 @@ const MarketCharts = (() => {
             `${symbol} ${periodLabel} closing-price history, ${formatPeriodChange(periodChange)} over selected range`
         );
 
+        const [firstX] = coordinates[0].split(',');
+        const [lastX] = coordinates[coordinates.length - 1].split(',');
+        const chartFloor = (height - inset).toFixed(1);
+        const area = domDocument.createElementNS('http://www.w3.org/2000/svg', 'path');
+        area.setAttribute('class', 'history-area');
+        area.setAttribute('fill', addAreaGradient(svg, 'history', domDocument));
+        area.setAttribute(
+            'd',
+            `M ${firstX},${chartFloor} L ${coordinates.join(' L ')} L ${lastX},${chartFloor} Z`
+        );
+
         const line = domDocument.createElementNS('http://www.w3.org/2000/svg', 'polyline');
         line.setAttribute('points', coordinates.join(' '));
+        svg.appendChild(area);
         svg.appendChild(line);
         return svg;
     }

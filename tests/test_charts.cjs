@@ -42,12 +42,15 @@ test('sparkline renders supplied intraday prices', () => {
         chart.attributes['aria-label'],
         'One-day intraday price trend; color follows daily percentage change'
     );
-    assert.equal(chart.children[0].tagName, 'polyline');
-    assert.equal(chart.children[0].attributes.points.split(' ').length, 5);
-    assert.equal(chart.children[1].tagName, 'circle');
-    assert.equal(chart.children[1].attributes.class, 'sparkline-endpoint');
-    assert.equal(chart.children[1].attributes.cx, '84.0');
-    assert.equal(chart.children[1].children[0].textContent, 'Latest available price');
+    const area = chart.children.find((child) => child.attributes.class === 'sparkline-area');
+    const line = chart.children.find((child) => child.tagName === 'polyline');
+    const endpoint = chart.children.find((child) => child.attributes.class === 'sparkline-endpoint');
+    assert.match(area.attributes.fill, /^url\(#sparkline-fill-/);
+    assert.match(area.attributes.d, /Z$/);
+    assert.equal(line.attributes.points.split(' ').length, 5);
+    assert.equal(endpoint.tagName, 'circle');
+    assert.equal(endpoint.attributes.cx, '84.0');
+    assert.equal(endpoint.children[0].textContent, 'Latest available price');
 });
 
 test('charts show an unavailable state when there are too few valid prices', () => {
@@ -72,7 +75,12 @@ test('selected chart renders dated history as an accessible SVG', () => {
         history.attributes['aria-label'],
         'SPY 5D closing-price history, +2.00% over selected range'
     );
-    assert.equal(history.children[0].attributes.points.split(' ').length, 3);
+    const area = history.children.find((child) => child.attributes.class === 'history-area');
+    const line = history.children.find((child) => child.tagName === 'polyline');
+    assert.match(area.attributes.fill, /^url\(#history-fill-/);
+    assert.match(area.attributes.d, /Z$/);
+    assert.equal(line.attributes.points.split(' ').length, 3);
+    assert.equal(history.children.length, 3);
 });
 
 test('selected 1D uses its own period change while the card follows daily change', () => {
